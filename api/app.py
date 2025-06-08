@@ -14,7 +14,7 @@ app = Flask(__name__)
 # IMPORTANT: Change this to a strong, random key in production!
 # You can generate one with `secrets.token_hex(16)` for 32 characters or `os.urandom(24)` for 24 bytes (48 hex chars)
 # For production, it's recommended to load this from an environment variable.
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16)) # Use environment variable or generate a secure one
+# app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16)) # Use environment variable or generate a secure one
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///baba_milk.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
