@@ -14,7 +14,7 @@ app = Flask(__name__)
 # IMPORTANT: Change this to a strong, random key in production!
 # You can generate one with `secrets.token_hex(16)` for 32 characters or `os.urandom(24)` for 24 bytes (48 hex chars)
 # For production, it's recommended to load this from an environment variable.
-# app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16)) # Use environment variable or generate a secure one
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16)) # Use environment variable or generate a secure one
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///baba_milk.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -620,12 +620,6 @@ def update_order_status():
 # --- Application Initialization ---
 
 if __name__ == '__main__':
-    # Add functools import here as it's used by decorators.
-    # It's generally good practice to put all imports at the top,
-    # but placing it here ensures it's available when decorators are defined
-    # if they were to be moved within the `if __name__` block.
-    # import functools # This import is already at the top, no need to duplicate
-
     with app.app_context():
         # --- Database Migration Logic ---
         inspector = inspect(db.engine)
@@ -695,21 +689,5 @@ if __name__ == '__main__':
         db.session.commit()
         print("Predefined products checked/added.")
 
-        # Example: Create a default admin user (for testing/initial setup)
-        # In a real application, you might have a dedicated script for creating initial admin users.
-        if not User.query.filter_by(phone='0912345678').first():
-            admin_user = User(
-                name='Admin',
-                lastname='User',
-                phone='0912345678',
-                email='admin@babamilk.com',
-                password=generate_password_hash('admin123'), # NEVER use default passwords in production
-                is_admin=True
-            )
-            db.session.add(admin_user)
-            db.session.commit()
-            print("Default admin user created (phone: 0912345678, password: admin123). REMEMBER TO CHANGE THIS IN PRODUCTION!")
-        else:
-            print("Admin user (0912345678) already exists.")
-
-    app.run(debug=True) # Set debug=False in production
+    # Run the Flask application
+    app.run(debug=True)
