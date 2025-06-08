@@ -11,21 +11,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Set up click listeners for all 'Add to Cart' buttons across product listings.
     initializeAddToCartButtons();
 
-    // 4. Initialize page-specific functionalities
-    if (document.getElementById('cart-page-container')) {
+    // 4. Initialize page-specific functionalities based on unique container IDs
+    const body = document.body;
+
+    if (body.contains(document.getElementById('cart-page-container'))) {
         renderCartItems();
         initializeCartPageElements();
     }
 
-    if (document.getElementById('payment-page-container')) {
+    if (body.contains(document.getElementById('payment-page-container'))) {
         initializePaymentOptions();
     }
 
-    if (document.getElementById('account-page-container')) {
+    if (body.contains(document.getElementById('account-page-container'))) {
         setupAccountPage();
     }
 
-    if (document.getElementById('admin-panel-container')) {
+    if (body.contains(document.getElementById('admin-panel-container'))) {
         initializeAdminPanel();
     }
 
@@ -436,6 +438,7 @@ function initializePaymentOptions() {
 // ======================== 👤 Account Page Functionality ========================
 /**
  * Sets up listeners for login/signup form toggling and modal display.
+ * Includes a check for flash messages and query parameters to manage modal visibility.
  */
 function setupAccountPage() {
     const loginFormContainer = document.getElementById('login-form-container');
@@ -444,19 +447,34 @@ function setupAccountPage() {
     const closeSignupModal = document.querySelector('#signupModal .close-button');
     const toggleLoginLink = document.getElementById('toggle-login');
 
+    // Validate all required DOM elements
     if (!loginFormContainer || !signupModal || !toggleSignupLink || !closeSignupModal || !toggleLoginLink) {
-        console.warn("Missing elements for account page setup. Some functionality may not work.");
+        console.warn("⚠️ Missing required elements on account page. Signup modal may not function correctly.");
         return;
     }
 
+    // Hide modal initially
     signupModal.style.display = 'none';
+    loginFormContainer.classList.remove('hidden');
 
+    // Flash message-based modal trigger (for Flask backend)
+    const flashMessages = JSON.parse(sessionStorage.getItem('flash_messages') || '[]');
+    const hasSignupError = flashMessages.some(msg => msg.category === 'danger');
+
+    if (hasSignupError) {
+        showModal(signupModal);
+        loginFormContainer.classList.add('hidden');
+        console.log("🚨 Signup error detected: Modal auto-opened.");
+    }
+
+    // Event: Open signup modal
     toggleSignupLink.addEventListener('click', (e) => {
         e.preventDefault();
         showModal(signupModal);
         loginFormContainer.classList.add('hidden');
     });
 
+    // Event: Close signup modal and show login
     toggleLoginLink.addEventListener('click', (e) => {
         e.preventDefault();
         hideModal(signupModal);
@@ -468,34 +486,43 @@ function setupAccountPage() {
         loginFormContainer.classList.remove('hidden');
     });
 
+    // Close modal when clicking outside
     window.addEventListener('click', (event) => {
-        if (event.target == signupModal) {
+        if (event.target === signupModal) {
             hideModal(signupModal);
             loginFormContainer.classList.remove('hidden');
         }
     });
+
+    // Show signup modal if URL contains ?show_signup=true
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('show_signup') === 'true') {
+        showModal(signupModal);
+        loginFormContainer.classList.add('hidden');
+        console.log("🔄 URL requested signup modal.");
+    }
 }
 
 // ======================== ✨ Modal Utility Functions ========================
-/**
- * Displays a given modal element.
- * @param {HTMLElement} modalElement - The modal DOM element to show.
- */
 function showModal(modalElement) {
     if (modalElement) {
         modalElement.style.display = 'block';
+        document.body.style.overflow = 'hidden'; // optional: prevent background scroll
     }
 }
 
-/**
- * Hides a given modal element.
- * @param {HTMLElement} modalElement - The modal DOM element to hide.
- */
 function hideModal(modalElement) {
     if (modalElement) {
         modalElement.style.display = 'none';
+        document.body.style.overflow = 'auto'; // optional: restore scroll
     }
 }
+
+// ======================== 🚀 Auto Init on DOM Ready ========================
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("🔧 Initializing account page functionality...");
+    setupAccountPage();
+});
 
 // ======================== 📊 Admin Panel Functionality ========================
 /**

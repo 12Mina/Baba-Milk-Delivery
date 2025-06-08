@@ -286,7 +286,7 @@ footer p {
     margin: 5px 0;
 }
 
-/* === Account Page / Forms === */
+/* --- Account Page / Forms --- */
 .auth-container {
     max-width: 500px;
     margin: 50px auto;
@@ -295,10 +295,12 @@ footer p {
     border-radius: 10px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
     text-align: center;
+    /* Ensure the login form container is display: block by default or controlled by JS */
+    display: block; /* Important for initial visibility of login form */
 }
 
 .auth-container h2 {
-    color: #5d3a0c;
+    color: #5d3a0c; /* Darker brown for headings */
     margin-bottom: 25px;
     font-size: 2em;
 }
@@ -306,7 +308,7 @@ footer p {
 .auth-container form {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 15px; /* Space between form elements */
 }
 
 .auth-container label {
@@ -314,7 +316,7 @@ footer p {
     font-weight: bold;
     color: #555;
     margin-bottom: 5px;
-    display: block; /* Ensure label is on its own line */
+    display: block; /* Ensures label is on its own line above input */
 }
 
 .auth-container input[type="text"],
@@ -322,21 +324,22 @@ footer p {
 .auth-container input[type="email"],
 .auth-container input[type="password"],
 .auth-container textarea {
-    width: calc(100% - 20px); /* Adjust for padding */
+    width: calc(100% - 20px); /* Full width minus padding */
     padding: 12px 10px;
-    margin-bottom: 10px;
+    margin-bottom: 10px; /* Space after input */
     border: 1px solid #ddd;
     border-radius: 5px;
     font-size: 1em;
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
 
 .auth-container textarea {
-    resize: vertical;
+    resize: vertical; /* Allow vertical resizing */
     min-height: 80px;
 }
 
 .auth-container button[type="submit"] {
-    background-color: #8b4513;
+    background-color: #8b4513; /* SaddleBrown */
     color: white;
     padding: 12px 20px;
     border: none;
@@ -345,53 +348,83 @@ footer p {
     font-size: 1.1em;
     transition: background-color 0.3s ease;
     margin-top: 10px;
+    width: 100%; /* Make button full width */
 }
 
 .auth-container button[type="submit"]:hover {
-    background-color: #a0522d;
+    background-color: #a0522d; /* Sienna on hover */
 }
 
 .toggle-link {
     display: block;
     margin-top: 20px;
-    color: #8b4513;
+    color: #8b4513; /* SaddleBrown */
     text-decoration: none;
     font-weight: bold;
     transition: color 0.3s ease;
 }
 
 .toggle-link:hover {
-    color: #a0522d;
+    color: #a0522d; /* Sienna on hover */
+    text-decoration: underline; /* Add underline on hover for better visual feedback */
 }
 
 /* --- Modal for Signup --- */
 .modal {
-    display: none; /* Hidden by default */
-    position: fixed; /* Stay in place */
-    z-index: 1001; /* Sit on top */
+    display: none; /* Hidden by default - This is crucial for JavaScript to control */
+    position: fixed; /* Stay in place relative to the viewport */
+    z-index: 1001; /* Higher than other elements to be on top */
     left: 0;
     top: 0;
     width: 100%; /* Full width */
     height: 100%; /* Full height */
-    overflow: auto; /* Enable scroll if needed */
-    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
-    padding-top: 60px;
+    overflow: auto; /* Enable scroll if content is larger than viewport */
+    background-color: rgba(0,0,0,0.4); /* Dark overlay */
+    padding-top: 60px; /* Space from the top */
+    /* Add a subtle fade-in transition when the modal is shown */
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+/* Class to show the modal (applied by JavaScript) */
+/* The previous answer mentioned this class, but your JS directly sets display/opacity.
+   I've kept it here in case you want to use it for cleaner JS.
+   If your JS adds 'display: block' and 'opacity: 1' directly, this class isn't strictly necessary.
+*/
+.modal.show {
+    opacity: 1;
 }
 
 .modal-content {
     background-color: #fefefe;
-    margin: 5% auto; /* 5% from the top and centered */
+    margin: 5% auto; /* 5% from the top and centered horizontally */
     padding: 30px;
     border: 1px solid #888;
-    width: 80%; /* Could be more responsive */
-    max-width: 500px;
+    width: 80%; /* Responsive width */
+    max-width: 500px; /* Max width for larger screens */
     border-radius: 10px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     position: relative;
+    /* Add slide-down animation for modal content */
+    animation-name: slideInTop;
+    animation-duration: 0.4s;
+    animation-fill-mode: forwards; /* Keep the end state of the animation */
+}
+
+/* Keyframe animation for modal content */
+@keyframes slideInTop {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 .modal-content h2 {
-    color: #5d3a0c;
+    color: #5d3a0c; /* Darker brown for headings */
     margin-bottom: 25px;
     font-size: 2em;
     text-align: center;
@@ -405,13 +438,13 @@ footer p {
     font-size: 30px;
     font-weight: bold;
     cursor: pointer;
+    transition: color 0.3s ease; /* Smooth transition for hover */
 }
 
 .close-button:hover,
 .close-button:focus {
-    color: black;
+    color: #5d3a0c; /* Darker brown on hover */
     text-decoration: none;
-    cursor: pointer;
 }
 
 /* === Flash Messages === */

@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, g
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from werkzeug.security import check_password_hash, generate_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
@@ -149,79 +151,101 @@ def home():
     cheese_products = Product.query.filter_by(category='cheese').all()
     butter_products = Product.query.filter_by(category='butter').all()
     return render_template('home.html',
-                           milk_products=milk_products,
-                           yogurt_products=yogurt_products,
-                           cheese_products=cheese_products,
-                           butter_products=butter_products)
+                            milk_products=milk_products,
+                            yogurt_products=yogurt_products,
+                            cheese_products=cheese_products,
+                            butter_products=butter_products)
 
 @app.route('/account', methods=['GET', 'POST'])
 def account():
-    """Handles user login."""
     if request.method == 'POST':
-        if 'login_submit' in request.form:
-            phone = request.form['phone']
-            password = request.form['password']
+        phone = request.form.get('phone')
+        password = request.form.get('password')
+        login_submit = request.form.get('login_submit') # Check if login form was submitted
+
+        if login_submit: # This ensures it's the login form, not signup
             user = User.query.filter_by(phone=phone).first()
 
             if user and check_password_hash(user.password, password):
+                session.clear() # Clear any existing session data
                 session['user_id'] = user.id
-                session['user_name'] = user.name
-                session['is_admin'] = user.is_admin # Store admin status
-                set_flash_message('Login successful!', 'success')
-                return redirect(url_for('dashboard'))
+                session['user_name'] = user.name # Store name for display
+                session['is_admin'] = user.is_admin # Store admin status if applicable
+                flash('Login successful!', 'success')
+                # Redirect to dashboard or home page after successful login
+                if user.is_admin:
+                    return redirect(url_for('admin')) # Assuming an admin dashboard
+                return redirect(url_for('home')) # Redirect to home/dashboard
             else:
-                set_flash_message('Invalid phone number or password', 'danger')
+                flash('Invalid phone number or password. Please try again.', 'danger')
+                # Stay on the same page and re-render the login form
+                return render_template('account.html') # Rerender the page with flash message
+    
+    # If it's a GET request, or POST request that failed, render the account page
+    # If a user is already logged in, redirect them away from this page
+    if 'user_id' in session:
+        flash('You are already logged in.', 'info')
+        return redirect(url_for('home')) # Or their dashboard
+
     return render_template('account.html')
 
-@app.route('/signup', methods=['POST'])
+@app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    """Handles user registration."""
-    name = request.form['name']
-    lastname = request.form.get('lastname') # Use .get for optional fields
-    phone = request.form['phone']
-    email = request.form.get('email')
-    password = request.form['psw']
-    confirm_password = request.form['psw-repeat']
+    if request.method == 'POST':
+        name = request.form.get('name')
+        lastname = request.form.get('lastname')
+        phone = request.form.get('phone') # Note: Template uses 'phone' for signup too
+        email = request.form.get('email')
+        password = request.form.get('psw') # Template uses 'psw' for password
+        repeat_password = request.form.get('psw-repeat') # Template uses 'psw-repeat'
 
-    if password != confirm_password:
-        set_flash_message('Passwords do not match!', 'danger')
-        return redirect(url_for('account'))
+        # --- Input Validation ---
+        if not (name and phone and password and repeat_password):
+            flash('All required fields must be filled out.', 'danger')
+            return redirect(url_for('account')) # Redirect back to the account page to show modal/form
 
-    if not phone.isdigit() or len(phone) < 9:
-        set_flash_message('Please enter a valid phone number (digits only, at least 9 digits).', 'danger')
-        return redirect(url_for('account'))
+        if password != repeat_password:
+            flash('Passwords do not match.', 'danger')
+            return redirect(url_for('account'))
 
-    if User.query.filter_by(phone=phone).first():
-        set_flash_message('Phone number already registered', 'danger')
-        return redirect(url_for('account'))
+        # Check if phone number already exists
+        existing_user = User.query.filter_by(phone=phone).first()
+        if existing_user:
+            flash('Phone number already registered. Please login.', 'danger')
+            return redirect(url_for('account'))
 
-    if email and User.query.filter_by(email=email).first():
-        set_flash_message('Email already registered', 'danger')
-        return redirect(url_for('account'))
+        # Check if email already exists (if email is unique in your model)
+        if email:
+            existing_email_user = User.query.filter_by(email=email).first()
+            if existing_email_user:
+                flash('Email already registered. Please use a different email or login.', 'danger')
+                return redirect(url_for('account'))
+        # --- End Input Validation ---
 
-    hashed_password = generate_password_hash(password)
+        hashed_password = generate_password_hash(password)
 
-    new_user = User(
-        name=name,
-        lastname=lastname,
-        phone=phone,
-        email=email if email else None,
-        password=hashed_password,
-        is_admin=False # Default to non-admin
-    )
+        new_user = User(
+            name=name,
+            lastname=lastname if lastname else None, # Handle optional lastname
+            phone=phone,
+            email=email if email else None,          # Handle optional email
+            password=hashed_password,
+            is_admin=False # Default to non-admin
+        )
 
-    try:
-        db.session.add(new_user)
-        db.session.commit()
-        session['user_id'] = new_user.id
-        session['user_name'] = new_user.name
-        session['is_admin'] = new_user.is_admin
-        set_flash_message('Account created successfully! You are now logged in.', 'success')
-        return redirect(url_for('dashboard'))
-    except Exception as e:
-        db.session.rollback()
-        set_flash_message(f'An error occurred during registration: {e}', 'danger')
-        return redirect(url_for('account'))
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            flash('Account created successfully! Please log in.', 'success')
+            return redirect(url_for('account')) # Redirect to account page after successful signup
+        except Exception as e:
+            db.session.rollback()
+            flash(f'An error occurred during registration: {e}', 'danger')
+            # Log the error for debugging: app.logger.error(f"Signup error: {e}")
+            return redirect(url_for('account'))
+    
+    # If it's a GET request, just render the account page with the signup modal (handled by JS)
+    return render_template('account.html')
 
 
 @app.route('/dashboard')
@@ -633,9 +657,7 @@ if __name__ == '__main__':
             if 'is_admin' not in columns:
                 print("Migrating 'user' table to add 'is_admin' column...")
                 try:
-                    # SQLite does not support ADD COLUMN with DEFAULT for existing tables directly in all cases
-                    # A common robust migration strategy is to create a new table, copy data, drop old, rename new.
-                    # This is more robust for SQLite specific quirks.
+                    # Attempt to add column directly
                     db.session.execute(text("ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
                     db.session.commit()
                     print("Migration complete. 'is_admin' column added to 'user' table with default FALSE.")
@@ -663,31 +685,65 @@ if __name__ == '__main__':
                             INSERT INTO user_new (id, name, lastname, phone, email, password, address, created_at, is_admin)
                             SELECT id, name, lastname, phone, email, password, address, created_at, FALSE FROM user
                         """))
-                        db.session.execute(text("DROP TABLE user")) # Drop the old table
-                        db.session.execute(text("ALTER TABLE user_new RENAME TO user")) # Rename the new table
+                        # Drop the old table
+                        db.session.execute(text("DROP TABLE user"))
+                        # Rename the new table to the original table name
+                        db.session.execute(text("ALTER TABLE user_new RENAME TO user"))
                         db.session.commit()
-                        print("Robust migration complete. 'is_admin' column added and data transferred.")
-                    except Exception as inner_e:
+                        print("Robust migration complete. 'is_admin' column added and data preserved.")
+                    except Exception as migrate_e:
                         db.session.rollback()
-                        print(f"Critical error during robust migration: {inner_e}")
-                        print("Database migration failed. Please inspect your database schema manually.")
-            else:
-                print("'is_admin' column already exists in 'user' table. No migration needed.")
-        # --- End of Database Migration Logic ---
+                        print(f"FATAL ERROR: Robust migration failed: {migrate_e}")
+                        print("Manual database intervention may be required.")
+                        exit(1) # Exit if critical migration fails
 
-        # Add predefined products if the database is empty or they don't exist
-        for prod_data in products_data:
-            if not Product.query.filter_by(name=prod_data['name']).first():
+        # --- Product Seeding ---
+        # Only add products if the product table is empty
+        if Product.query.count() == 0:
+            print("Seeding initial product data...")
+            for p_data in products_data:
+                # Construct image_path from static/images and image_suffix
+                image_path = f"images/product-{p_data['image_suffix']}.png" # Assuming .png for all
                 new_product = Product(
-                    name=prod_data['name'],
-                    price=prod_data['price'],
-                    category=prod_data['category'],
-                    image_path=f"Product{prod_data['image_suffix']}.jpg",
-                    description=prod_data['description']
+                    name=p_data['name'],
+                    category=p_data['category'],
+                    price=p_data['price'],
+                    image_path=image_path,
+                    description=p_data['description']
                 )
                 db.session.add(new_product)
-        db.session.commit()
-        print("Predefined products checked/added.")
+            try:
+                db.session.commit()
+                print("Product data seeded successfully.")
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error seeding product data: {e}")
+        else:
+            print("Product data already exists, skipping seeding.")
 
-    # Run the Flask application
+        # --- Admin User Creation (Optional, for first-time setup) ---
+        # Consider creating an admin user if none exists.
+        # This is a basic example; in production, use a more secure way to create initial admin accounts.
+        if User.query.filter_by(is_admin=True).count() == 0:
+            print("No admin user found. Creating a default admin user (phone: 0911223344, pass: adminpass)...")
+            default_admin_password = os.environ.get('DEFAULT_ADMIN_PASSWORD', 'adminpass')
+            admin_user = User(
+                name='Admin',
+                lastname='User',
+                phone='0911223344',
+                email='admin@example.com',
+                password=generate_password_hash(default_admin_password),
+                is_admin=True,
+                address='Admin Office'
+            )
+            db.session.add(admin_user)
+            try:
+                db.session.commit()
+                print("Default admin user created. Please change the password immediately!")
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error creating default admin user: {e}")
+        else:
+            print("Admin user already exists.")
+
     app.run(debug=True)
