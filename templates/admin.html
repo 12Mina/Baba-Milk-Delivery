@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel{% endblock %}
+
+{% block content %}
+<div class="admin-container" id="admin-panel-container">
+    <h2>Admin Order Management</h2>
+
+    {% if orders %}
+    <table class="admin-orders-table">
+        <thead>
+            <tr>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Delivery Address</th>
+                <th>Items</th>
+                <th>Order Date</th>
+                <th>Total</th>
+                <th>Payment Method</th>
+                <th>Payment Details</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr>
+                <td>{{ order.id }}</td>
+                <td>{{ order.customer }}</td>
+                <td>{{ order.customer_phone }}</td>
+                <td>{{ order.customer_email }}</td>
+                <td>{{ order.delivery_address }}</td>
+                <td>{{ order.items }}</td>
+                <td>{{ order.date }}</td>
+                <td>ETB {{ order.total | float | round(2) }}</td>
+                <td>{{ order.payment_method.replace('_', ' ').title() }}</td>
+                <td class="payment-details-cell">
+                    {% if order.payment_details.phone %}
+                        Phone: {{ order.payment_details.phone }}<br>
+                    {% endif %}
+                    {% if order.payment_details.tx_id %}
+                        Tx ID: {{ order.payment_details.tx_id }}<br>
+                    {% endif %}
+                    {% if not order.payment_details %}N/A{% endif %}
+                </td>
+                <td>
+                    <form action="{{ url_for('update_order_status') }}" method="POST" class="update-status-form">
+                        <input type="hidden" name="order_id" value="{{ order.id }}">
+                        <select name="status">
+                            <option value="placed" {% if order.status == 'placed' %}selected{% endif %}>Placed</option>
+                            <option value="pending_payment_telebirr" {% if order.status == 'pending_payment_telebirr' %}selected{% endif %}>Pending Telebirr Payment</option>
+                            <option value="pending_payment_cbebirr" {% if order.status == 'pending_payment_cbebirr' %}selected{% endif %}>Pending CBE Birr Payment</option>
+                            <option value="confirmed" {% if order.status == 'confirmed' %}selected{% endif %}>Confirmed</option>
+                            <option value="packed" {% if order.status == 'packed' %}selected{% endif %}>Packed</option>
+                            <option value="out_for_delivery" {% if order.status == 'out_for_delivery' %}selected{% endif %}>Out for Delivery</option>
+                            <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>Delivered</option>
+                            <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                        </select>
+                        <button type="submit">Update</button>
+                    </form>
+                </td>
+                <td>
+                    <a href="#" class="btn-primary" style="padding: 8px 12px; font-size: 0.9em; text-decoration: none; display: inline-block; margin-top: 5px;">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No orders found.</p>
+    {% endif %}
+</div>
+{% endblock %}
