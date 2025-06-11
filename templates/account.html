@@ -11,7 +11,10 @@
             <input type="tel" placeholder="Enter Phone Number" name="phone" required>
 
             <label for="password"><b>Password</b></label>
-            <input type="password" placeholder="Enter Password" name="password" required>
+            <div class="password-wrapper">
+                <input type="password" placeholder="Enter Password" name="password" id="login-password" required>
+                <i class="fas fa-eye toggle-password" onclick="togglePassword('login-password', this)"></i>
+            </div>
 
             <button type="submit" name="login_submit">Login</button>
         </form>
@@ -19,9 +22,10 @@
     </div>
 </div>
 
+<!-- Signup Modal -->
 <div id="signupModal" class="modal">
     <div class="modal-content">
-        <span class="close-button">&times;</span>
+        <span class="close-button" id="close-signup">&times;</span>
         <h2>Sign Up</h2>
         <form action="{{ url_for('signup') }}" method="POST">
             <label for="name"><b>First Name</b></label>
@@ -37,15 +41,63 @@
             <input type="email" placeholder="Enter Email" name="email">
 
             <label for="psw"><b>Password</b></label>
-            <input type="password" placeholder="Enter Password" name="psw" required>
+            <div class="password-wrapper">
+                <input type="password" placeholder="Enter Password" name="psw" id="signup-password" required>
+                <i class="fas fa-eye toggle-password" onclick="togglePassword('signup-password', this)"></i>
+            </div>
 
             <label for="psw-repeat"><b>Repeat Password</b></label>
-            <input type="password" placeholder="Repeat Password" name="psw-repeat" required>
+            <div class="password-wrapper">
+                <input type="password" placeholder="Repeat Password" name="psw-repeat" id="signup-password-repeat" required>
+                <i class="fas fa-eye toggle-password" onclick="togglePassword('signup-password-repeat', this)"></i>
+            </div>
 
             <button type="submit">Register</button>
         </form>
         <a href="#" id="toggle-login" class="toggle-link">Already have an account? Login</a>
     </div>
 </div>
-<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const signupModal = document.getElementById('signupModal');
+    const toggleSignup = document.getElementById('toggle-signup');
+    const toggleLogin = document.getElementById('toggle-login');
+    const closeBtn = document.getElementById('close-signup');
+
+    toggleSignup.addEventListener('click', function (e) {
+        e.preventDefault();
+        signupModal.style.display = 'block';
+    });
+
+    toggleLogin.addEventListener('click', function (e) {
+        e.preventDefault();
+        signupModal.style.display = 'none';
+    });
+
+    closeBtn.addEventListener('click', function () {
+        signupModal.style.display = 'none';
+    });
+
+    window.onclick = function (event) {
+        if (event.target == signupModal) {
+            signupModal.style.display = "none";
+        }
+    };
+});
+
+// Password show/hide
+function togglePassword(id, icon) {
+    const input = document.getElementById(id);
+    if (input.type === "password") {
+        input.type = "text";
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        input.type = "password";
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}
+</script>
 {% endblock %}

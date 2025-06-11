@@ -14,10 +14,10 @@
     <section class="product-categories">
         <h2>Our Categories</h2>
         <div class="category-grid">
-            <a href="#milk-products"><img src="{{ url_for('static', filename='image/image8.jpg') }}" alt="Milk" /></a>
-            <a href="#yogurt-products"><img src="{{ url_for('static', filename='image/image9.jpg') }}" alt="Yogurt" /></a>
-            <a href="#cheese-products"><img src="{{ url_for('static', filename='image/image10.jpg') }}" alt="Cheese" /></a>
-            <a href="#butter-products"><img src="{{ url_for('static', filename='image/image11.jpg') }}" alt="Butter" /></a>
+            <a href="#milk-products"><img src="{{ url_for('static', filename='images/image8.jpg') }}" alt="Milk" /></a>
+            <a href="#yogurt-products"><img src="{{ url_for('static', filename='images/image9.jpg') }}" alt="Yogurt" /></a>
+            <a href="#cheese-products"><img src="{{ url_for('static', filename='images/image10.jpg') }}" alt="Cheese" /></a>
+            <a href="#butter-products"><img src="{{ url_for('static', filename='images/image11.jpg') }}" alt="Butter" /></a>
         </div>
     </section>
 
@@ -29,7 +29,7 @@
                 <div class="product-grid">
                     {% for product in milk_products %}
                     <div class="product-card">
-                        <img src="{{ url_for('static', filename='image/' + product.image_path) }}" alt="{{ product.name }}">
+                        <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
                         <h3>{{ product.name }}</h3>
                         <p>{{ product.description }}</p>
                         <p class="product-price">ETB {{ product.price | int }}</p>
@@ -49,7 +49,7 @@
                 <div class="product-grid">
                     {% for product in yogurt_products %}
                     <div class="product-card">
-                        <img src="{{ url_for('static', filename='image/' + product.image_path) }}" alt="{{ product.name }}">
+                        <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
                         <h3>{{ product.name }}</h3>
                         <p>{{ product.description }}</p>
                         <p class="product-price">ETB {{ product.price | int }}</p>
@@ -69,7 +69,7 @@
                 <div class="product-grid">
                     {% for product in cheese_products %}
                     <div class="product-card">
-                        <img src="{{ url_for('static', filename='image/' + product.image_path) }}" alt="{{ product.name }}">
+                        <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
                         <h3>{{ product.name }}</h3>
                         <p>{{ product.description }}</p>
                         <p class="product-price">ETB {{ product.price | int }}</p>
@@ -89,7 +89,7 @@
                 <div class="product-grid">
                     {% for product in butter_products %}
                     <div class="product-card">
-                        <img src="{{ url_for('static', filename='image/' + product.image_path) }}" alt="{{ product.name }}">
+                        <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
                         <h3>{{ product.name }}</h3>
                         <p>{{ product.description }}</p>
                         <p class="product-price">ETB {{ product.price | int }}</p>
@@ -111,5 +111,6 @@
         <p>Track your deliveries and get real-time updates, just like Amazon. This feature helps you know exactly where your milk is!</p>
         <a href="{{ url_for('dashboard') }}" class="track-button">📊 Go to Dashboard</a>
     </section>
-<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+    <script src="{{ url_for('static', filename='Js/script.js') }}"></script>
 {% endblock %}

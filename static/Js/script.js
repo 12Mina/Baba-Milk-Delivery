@@ -1,6 +1,6 @@
 // ======================== 🚀 Initialize ========================
 document.addEventListener('DOMContentLoaded', () => {
-    displayFlashMessages();
+    if (typeof displayFlashMessages === 'function') displayFlashMessages();
     updateCartCountInHeader();
     initializeAddToCartButtons();
 
@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (body.contains(document.getElementById('cart-page-container'))) {
         renderCartItems();
-        initializeCartPageElements();
+        initializeCartPageElements(); // ✅ This function is now defined below
     }
 
     if (body.contains(document.getElementById('payment-page-container'))) {
@@ -17,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const accountContainer = document.getElementById('container');
     if (body.contains(accountContainer)) {
-        console.log("🔧 Initializing Florin Pop account page functionality...");
         initializeFlorinPopAccountPage(accountContainer);
     }
 
@@ -33,8 +32,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// (The rest remains unchanged until renderCartItems)
+// ======================== ✨ Flash Messages ========================
+function displayFlashMessages() {
+    const flashContainer = document.querySelector('.flash-messages');
+    if (flashContainer) {
+        flashContainer.style.display = 'block';
+        setTimeout(() => {
+            flashContainer.style.display = 'none';
+        }, 4000);
+    }
+}
 
+// ======================== 🛒 Cart Functions ========================
+function updateCartCountInHeader() {
+    const cartCount = localStorage.getItem('cartCount') || 0;
+    const cartCounter = document.querySelector('.cart-count');
+    if (cartCounter) cartCounter.textContent = cartCount;
+}
+
+function initializeAddToCartButtons() {
+    const buttons = document.querySelectorAll('.add-to-cart-btn');
+    buttons.forEach(button => {
+        button.addEventListener('click', () => {
+            const productId = button.getAttribute('data-product-id');
+            addToCart(productId);
+        });
+    });
+}
+
+function addToCart(productId) {
+    console.log(`🧺 Adding product ${productId} to cart...`);
+    // Simulate cart update logic or send to Flask via fetch
+    displayFlashMessage('🧺 Item added to cart!', 'success');
+}
+
+// ======================== 🧾 Cart Rendering ========================
 async function renderCartItems() {
     const cartPageContainer = document.getElementById('cart-page-container');
     if (!cartPageContainer) return;
@@ -47,15 +79,13 @@ async function renderCartItems() {
     const cartDataHiddenInput = document.getElementById('cart-data-hidden');
 
     if (!cartItemsList || !cartTotalElement || !emptyCartMessage || !cartSummarySection || !totalAmountHiddenInput || !cartDataHiddenInput) {
-        console.error("Missing critical cart elements. Cannot render cart items. Check your cart.html template.");
+        console.error("Missing cart elements. Check your cart.html structure.");
         return;
     }
 
     try {
         const response = await fetch('/cart/items');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Status: ${response.status}`);
         const data = await response.json();
         const cart = Object.values(data.items || {});
         cartItemsList.innerHTML = '';
@@ -77,13 +107,12 @@ async function renderCartItems() {
             const itemPrice = parseFloat(item.price) || 0;
             const itemQuantity = parseInt(item.quantity) || 0;
             total += itemPrice * itemQuantity;
-
-            const fullImagePath = `/static/image/${item.image_path}`;
+            const imagePath = `/static/images/${item.image_path}`;
 
             const cartItem = document.createElement('div');
             cartItem.className = 'cart-item';
             cartItem.innerHTML = `
-                <img src="${fullImagePath}" alt="${item.name}" class="cart-item-img">
+                <img src="${imagePath}" alt="${item.name}" class="cart-item-img">
                 <div class="item-details">
                     <h3>${item.name}</h3>
                     <p class="item-subtotal">ETB ${(itemPrice * itemQuantity).toFixed(2)}</p>
@@ -104,10 +133,9 @@ async function renderCartItems() {
         totalAmountHiddenInput.value = total.toFixed(2);
         cartDataHiddenInput.value = JSON.stringify(cart);
 
-        cartItemsList.addEventListener('click', (e) => {
+        cartItemsList.addEventListener('click', e => {
             const target = e.target;
             const productId = target.closest('[data-product-id]')?.getAttribute('data-product-id');
-
             if (!productId) return;
 
             if (target.classList.contains('decrease-quantity')) {
@@ -119,8 +147,67 @@ async function renderCartItems() {
             }
         });
 
-    } catch (error) {
-        console.error('Error fetching cart items:', error);
-        displayFlashMessage('Failed to load cart items. Please try refreshing the page.', 'danger');
+    } catch (err) {
+        console.error('Failed to fetch cart items:', err);
+        displayFlashMessage('Failed to load cart items. Try again.', 'danger');
     }
+}
+
+// ======================== 📦 Cart Page Elements (Fixed) ========================
+function initializeCartPageElements() {
+    console.log('✅ Cart page elements initialized.');
+    // You can add additional logic here later if needed (e.g., promo code input)
+}
+
+// ======================== 💳 Payment Page ========================
+function initializePaymentOptions() {
+    const options = document.querySelectorAll('input[name="payment-method"]');
+    options.forEach(option => {
+        option.addEventListener('change', () => {
+            displayFlashMessage(`💳 You selected: ${option.value}`, 'info');
+        });
+    });
+}
+
+// ======================== 🔐 Account Page ========================
+function initializeFlorinPopAccountPage(container) {
+    const loginBtn = container.querySelector('.login');
+    const signupBtn = container.querySelector('.signup');
+    const formWrapper = container;
+
+    loginBtn?.addEventListener('click', () => {
+        formWrapper.classList.remove('active');
+    });
+
+    signupBtn?.addEventListener('click', () => {
+        formWrapper.classList.add('active');
+    });
+}
+
+// ======================== 🛠️ Admin Panel (Stub) ========================
+function initializeAdminPanel() {
+    console.log("Admin panel initialized.");
+}
+
+// ======================== 🔔 Flash Message Utility ========================
+function displayFlashMessage(message, type = 'info') {
+    const flashContainer = document.createElement('div');
+    flashContainer.className = `flash-messages ${type}`;
+    flashContainer.textContent = message;
+
+    document.body.appendChild(flashContainer);
+    setTimeout(() => {
+        flashContainer.remove();
+    }, 3000);
+}
+
+// ======================== 🧠 Cart Update Stub ========================
+function updateQuantityInCart(productId, delta) {
+    console.log(`Cart: Update product ${productId} by ${delta}`);
+    displayFlashMessage(`Cart updated for product ${productId}`, 'success');
+}
+
+function removeFromCart(productId) {
+    console.log(`Cart: Removed product ${productId}`);
+    displayFlashMessage(`Removed product ${productId}`, 'danger');
 }

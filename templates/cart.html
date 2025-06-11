@@ -6,21 +6,46 @@
 <div class="cart-page-container" id="cart-page-container">
     <h2>Your Shopping Cart</h2>
 
+    <!-- Flash Messages for Cart/Delivery -->
+    <div class="flash-messages" id="cart-flash">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Empty Cart Message -->
     <div id="empty-cart-message" class="empty-cart-message" style="display: none;">
         <p>Your cart is empty. Start adding some fresh products!</p>
         <a href="{{ url_for('home') }}" class="btn-primary">Browse Products</a>
     </div>
 
+    <!-- Cart Summary & Items -->
     <div id="cart-summary-section">
+        <!-- Cart Items List -->
         <div class="cart-items-list" id="cart-items-list">
-            </div>
+            <!-- Rendered dynamically by JS -->
+        </div>
 
+        <!-- Coupon Code -->
+        <div class="coupon-section">
+            <label for="coupon-code">Have a coupon?</label>
+            <input type="text" id="coupon-code" placeholder="Enter code">
+            <button type="button" id="apply-coupon" class="btn-secondary">Apply</button>
+            <p id="coupon-feedback" class="feedback-text"></p>
+        </div>
+
+        <!-- Total & Checkout -->
         <div class="cart-summary">
-            <p>Total: ETB <span id="cart-total">0.00</span></p>
+            <p><strong>Total:</strong> ETB <span id="cart-total">0.00</span></p>
             <button type="button" id="proceedToDeliveryBtn" class="btn-primary">Proceed to Delivery</button>
         </div>
 
-        <section id="deliveryInfoSection" class="hidden"> {# Initially hidden by default via CSS/JS #}
+        <!-- Delivery Info Section -->
+        <section id="deliveryInfoSection" class="hidden">
             <h3>Delivery Information</h3>
             <form id="delivery-form" action="{{ url_for('checkout_delivery') }}" method="POST">
                 <div class="form-group">
@@ -28,22 +53,33 @@
                     <input type="tel" id="delivery_phone" name="delivery_phone" placeholder="e.g., 09xxxxxxxx" required
                            value="{{ session.get('delivery_info', {}).get('phone', '') }}">
                 </div>
+
                 <div class="form-group">
                     <label for="delivery_address">Delivery Address:</label>
-                    <textarea id="delivery_address" name="delivery_address" rows="4" placeholder="Street, City, Building, Floor, Apartment number..." required>{{ session.get('delivery_info', {}).get('address', '') }}</textarea>
+                    <textarea id="delivery_address" name="delivery_address" rows="4"
+                              placeholder="Street, City, Building, Floor, Apartment number..." required>{{ session.get('delivery_info', {}).get('address', '') }}</textarea>
                 </div>
-                
-                {# Hidden inputs to pass cart data to Flask when delivery form is submitted #}
-                {# These are populated by JavaScript's renderCartItems function #}
+
+                <!-- Hidden inputs populated via JS -->
                 <input type="hidden" id="total-amount-hidden" name="total_amount_hidden">
                 <input type="hidden" id="cart-data-hidden" name="cart_data_hidden">
 
-                <button type="button" id="useGoogleMapButton" class="btn-primary">Use Google Map (Coming Soon)</button>
+                <button type="button" id="useGoogleMapButton" class="btn-secondary" disabled>📍 Use Google Map (Coming Soon)</button>
                 <button type="submit" class="btn-primary">Continue to Payment</button>
             </form>
         </section>
     </div>
-
 </div>
-<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+<!-- Cart Hover Preview Template (optional enhancement) -->
+<div id="cart-hover-preview" class="hidden">
+    <h4>Cart Preview</h4>
+    <ul id="cart-hover-items">
+        <!-- Inject items here via JS -->
+    </ul>
+    <p>Total: ETB <span id="hover-total">0.00</span></p>
+    <a href="{{ url_for('cart') }}" class="btn-secondary">View Cart</a>
+</div>
+
+<script src="{{ url_for('static', filename='Js/script.js') }}"></script>
 {% endblock %}
