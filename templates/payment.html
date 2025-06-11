@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Complete Your Payment{% endblock %}
+
+{% block content %}
+<div class="payment-page-container" id="payment-page-container">
+    <h2>Complete Your Payment</h2>
+
+    <div class="payment-summary">
+        <p>Order Total: ETB <span id="payment-total-amount">0.00</span></p>
+        <p class="help-text">Please select a payment method below.</p>
+    </div>
+
+    <form id="payment-form" action="{{ url_for('finalize_order') }}" method="POST">
+        <div class="payment-methods">
+            <h3>Choose a Payment Method</h3>
+
+            <div class="payment-option">
+                <label>
+                    <input type="radio" name="payment_method" value="cash_on_delivery" checked>
+                    Cash on Delivery
+                </label>
+            </div>
+
+            <div class="payment-option">
+                <label>
+                    <input type="radio" name="payment_method" value="telebirr">
+                    Telebirr
+                </label>
+            </div>
+            <div id="telebirr-details" class="payment-details-form hidden">
+                <p class="help-text">Please send ETB <span id="telebirr-amount">0.00</span> to our Telebirr number: <strong>+251 9XX XXX XXXX</strong></p>
+                <div class="form-group">
+                    <label for="telebirr_phone">Your Telebirr Phone Number:</label>
+                    <input type="tel" id="telebirr_phone" name="telebirr_phone" placeholder="e.g., 09xxxxxxxx">
+                    <p class="help-text">This helps us verify your payment.</p>
+                </div>
+            </div>
+
+            <div class="payment-option">
+                <label>
+                    <input type="radio" name="payment_method" value="cbebirr">
+                    CBE Birr
+                </label>
+            </div>
+            <div id="cbebirr-details" class="payment-details-form hidden">
+                <p class="help-text">Please send ETB <span id="cbebirr-amount">0.00</span> to our CBE Birr number: <strong>+251 9YY YYY YYYY</strong></p>
+                <div class="form-group">
+                    <label for="cbebirr_phone">Your CBE Birr Phone Number:</label>
+                    <input type="tel" id="cbebirr_phone" name="cbebirr_phone" placeholder="e.g., 09yyyyyyyy">
+                    <p class="help-text">This helps us verify your payment.</p>
+                </div>
+            </div>
+        </div>
+
+        <input type="hidden" id="total-amount-hidden-payment" name="total_amount" value="0.00">
+        <input type="hidden" id="cart-data-hidden-payment" name="cart_data" value="[]">
+
+        <button type="submit" class="btn-primary finalize-order-btn">Place Order</button>
+    </form>
+</div>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+{% endblock %}

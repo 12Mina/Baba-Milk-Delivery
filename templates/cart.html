@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Your Shopping Cart{% endblock %}
+
+{% block content %}
+<div class="cart-page-container" id="cart-page-container">
+    <h2>Your Shopping Cart</h2>
+
+    <div id="empty-cart-message" class="empty-cart-message" style="display: none;">
+        <p>Your cart is empty. Start adding some fresh products!</p>
+        <a href="{{ url_for('home') }}" class="btn-primary">Browse Products</a>
+    </div>
+
+    <div id="cart-summary-section">
+        <div class="cart-items-list" id="cart-items-list">
+            </div>
+
+        <div class="cart-summary">
+            <p>Total: ETB <span id="cart-total">0.00</span></p>
+            <button type="button" id="proceedToDeliveryBtn" class="btn-primary">Proceed to Delivery</button>
+        </div>
+
+        <section id="deliveryInfoSection" class="hidden"> {# Initially hidden by default via CSS/JS #}
+            <h3>Delivery Information</h3>
+            <form id="delivery-form" action="{{ url_for('checkout_delivery') }}" method="POST">
+                <div class="form-group">
+                    <label for="delivery_phone">Phone Number:</label>
+                    <input type="tel" id="delivery_phone" name="delivery_phone" placeholder="e.g., 09xxxxxxxx" required
+                           value="{{ session.get('delivery_info', {}).get('phone', '') }}">
+                </div>
+                <div class="form-group">
+                    <label for="delivery_address">Delivery Address:</label>
+                    <textarea id="delivery_address" name="delivery_address" rows="4" placeholder="Street, City, Building, Floor, Apartment number..." required>{{ session.get('delivery_info', {}).get('address', '') }}</textarea>
+                </div>
+                
+                {# Hidden inputs to pass cart data to Flask when delivery form is submitted #}
+                {# These are populated by JavaScript's renderCartItems function #}
+                <input type="hidden" id="total-amount-hidden" name="total_amount_hidden">
+                <input type="hidden" id="cart-data-hidden" name="cart_data_hidden">
+
+                <button type="button" id="useGoogleMapButton" class="btn-primary">Use Google Map (Coming Soon)</button>
+                <button type="submit" class="btn-primary">Continue to Payment</button>
+            </form>
+        </section>
+    </div>
+
+</div>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+{% endblock %}
