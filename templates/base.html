@@ -66,13 +66,20 @@
         </div>
     </footer>
 
-   <script src="{{ url_for('static', filename='Js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='Js/script.js') }}"></script>
     <script>
         // Auto-hide flash messages after 4 seconds
         setTimeout(() => {
             const flashes = document.querySelectorAll('.flash-messages .alert');
             flashes.forEach(flash => flash.style.display = 'none');
         }, 4000);
+
+        // On page load, fetch and display cart items/count
+        document.addEventListener("DOMContentLoaded", () => {
+            if (typeof renderCartItems === 'function') {
+                renderCartItems();
+            }
+        });
     </script>
 
     {% block scripts_extra %}{% endblock %}

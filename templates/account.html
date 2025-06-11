@@ -6,13 +6,13 @@
 <div class="auth-container" id="account-page-container">
     <div id="login-form-container">
         <h2>Login</h2>
-        <form action="{{ url_for('account') }}" method="POST">
-            <label for="phone"><b>Phone Number</b></label>
-            <input type="tel" placeholder="Enter Phone Number" name="phone" required>
+        <form action="{{ url_for('account') }}" method="POST" autocomplete="on">
+            <label for="login-phone"><b>Phone Number</b></label>
+            <input type="tel" placeholder="Enter Phone Number" name="phone" id="login-phone" required autocomplete="tel">
 
-            <label for="password"><b>Password</b></label>
+            <label for="login-password"><b>Password</b></label>
             <div class="password-wrapper">
-                <input type="password" placeholder="Enter Password" name="password" id="login-password" required>
+                <input type="password" placeholder="Enter Password" name="password" id="login-password" required autocomplete="current-password">
                 <i class="fas fa-eye toggle-password" onclick="togglePassword('login-password', this)"></i>
             </div>
 
@@ -27,28 +27,28 @@
     <div class="modal-content">
         <span class="close-button" id="close-signup">&times;</span>
         <h2>Sign Up</h2>
-        <form action="{{ url_for('signup') }}" method="POST">
-            <label for="name"><b>First Name</b></label>
-            <input type="text" placeholder="Enter First Name" name="name" required>
+        <form action="{{ url_for('signup') }}" method="POST" autocomplete="on">
+            <label for="signup-name"><b>First Name</b></label>
+            <input type="text" placeholder="Enter First Name" name="name" id="signup-name" required autocomplete="given-name">
 
-            <label for="lastname"><b>Last Name</b></label>
-            <input type="text" placeholder="Enter Last Name (Optional)" name="lastname">
+            <label for="signup-lastname"><b>Last Name</b></label>
+            <input type="text" placeholder="Enter Last Name (Optional)" name="lastname" id="signup-lastname" autocomplete="family-name">
 
-            <label for="phone_signup"><b>Phone Number</b></label>
-            <input type="tel" placeholder="Enter Phone Number" name="phone" required>
+            <label for="signup-phone"><b>Phone Number</b></label>
+            <input type="tel" placeholder="Enter Phone Number" name="phone" id="signup-phone" required autocomplete="tel">
 
-            <label for="email"><b>Email (Optional)</b></label>
-            <input type="email" placeholder="Enter Email" name="email">
+            <label for="signup-email"><b>Email (Optional)</b></label>
+            <input type="email" placeholder="Enter Email" name="email" id="signup-email" autocomplete="email">
 
-            <label for="psw"><b>Password</b></label>
+            <label for="signup-password"><b>Password</b></label>
             <div class="password-wrapper">
-                <input type="password" placeholder="Enter Password" name="psw" id="signup-password" required>
+                <input type="password" placeholder="Enter Password" name="psw" id="signup-password" required autocomplete="new-password">
                 <i class="fas fa-eye toggle-password" onclick="togglePassword('signup-password', this)"></i>
             </div>
 
-            <label for="psw-repeat"><b>Repeat Password</b></label>
+            <label for="signup-password-repeat"><b>Repeat Password</b></label>
             <div class="password-wrapper">
-                <input type="password" placeholder="Repeat Password" name="psw-repeat" id="signup-password-repeat" required>
+                <input type="password" placeholder="Repeat Password" name="psw-repeat" id="signup-password-repeat" required autocomplete="new-password">
                 <i class="fas fa-eye toggle-password" onclick="togglePassword('signup-password-repeat', this)"></i>
             </div>
 

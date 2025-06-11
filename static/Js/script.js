@@ -1,29 +1,36 @@
 // ======================== 🚀 Initialize ========================
 document.addEventListener('DOMContentLoaded', () => {
-    if (typeof displayFlashMessages === 'function') displayFlashMessages();
-    updateCartCountInHeader();
+    if (typeof displayFlashMessages === 'function') displayFlashMessages(); // This runs once on load
+    updateCartCountInHeader(); // Initial update for header count
+
+    // Initialize Add to Cart buttons on all product pages
     initializeAddToCartButtons();
 
     const body = document.body;
 
+    // Check if on the cart page and render items
     if (body.contains(document.getElementById('cart-page-container'))) {
         renderCartItems();
-        initializeCartPageElements(); // ✅ This function is now defined below
+        initializeCartPageElements();
     }
 
+    // Initialize payment options on payment page
     if (body.contains(document.getElementById('payment-page-container'))) {
         initializePaymentOptions();
     }
 
+    // Initialize account page (login/signup)
     const accountContainer = document.getElementById('container');
     if (body.contains(accountContainer)) {
         initializeFlorinPopAccountPage(accountContainer);
     }
 
+    // Initialize admin panel
     if (body.contains(document.getElementById('admin-panel-container'))) {
         initializeAdminPanel();
     }
 
+    // Track Button placeholder
     const trackButton = document.querySelector('.track-button');
     if (trackButton) {
         trackButton.addEventListener('click', () => {
@@ -33,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ======================== ✨ Flash Messages ========================
+// This is for auto-hiding static flash messages rendered by Flask
 function displayFlashMessages() {
     const flashContainer = document.querySelector('.flash-messages');
     if (flashContainer) {
@@ -44,10 +52,23 @@ function displayFlashMessages() {
 }
 
 // ======================== 🛒 Cart Functions ========================
-function updateCartCountInHeader() {
-    const cartCount = localStorage.getItem('cartCount') || 0;
-    const cartCounter = document.querySelector('.cart-count');
-    if (cartCounter) cartCounter.textContent = cartCount;
+
+// Fetches the latest cart count from the backend and updates the header icon
+async function updateCartCountInHeader() {
+    try {
+        const response = await fetch('/cart/total_quantity');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        const cartCounter = document.querySelector('.cart-count');
+        if (cartCounter) {
+            cartCounter.textContent = data.total_quantity;
+        }
+    } catch (error) {
+        console.error("Failed to fetch cart total quantity:", error);
+        // Optionally set a default or error state for the cart count
+        const cartCounter = document.querySelector('.cart-count');
+        if (cartCounter) cartCounter.textContent = '0'; // Or '?'
+    }
 }
 
 function initializeAddToCartButtons() {
@@ -55,21 +76,52 @@ function initializeAddToCartButtons() {
     buttons.forEach(button => {
         button.addEventListener('click', () => {
             const productId = button.getAttribute('data-product-id');
-            addToCart(productId);
+            // Extract product name if needed, or pass only ID and get name from server
+            const productName = button.closest('.product-card')?.querySelector('h3')?.textContent || 'Unknown Product';
+            addToCart(productId, productName); // Pass product name for better flash message
         });
     });
 }
 
-function addToCart(productId) {
-    console.log(`🧺 Adding product ${productId} to cart...`);
-    // Simulate cart update logic or send to Flask via fetch
-    displayFlashMessage('🧺 Item added to cart!', 'success');
+// Sends product to backend to add to cart
+async function addToCart(productId, productName) {
+    console.log(`🧺 Attempting to add product ${productId} (${productName}) to cart...`);
+    try {
+        const response = await fetch('/add_to_cart', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest' // Helps Flask distinguish AJAX
+            },
+            body: JSON.stringify({ product_id: productId }) // Only product_id needed, server fetches details
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        }
+
+        const data = await response.json();
+        if (data.success) {
+            displayFlashMessage(data.message || `Successfully added ${productName} to cart!`, 'success');
+            updateCartCountInHeader(); // Update cart count in header immediately
+            // If on the cart page, re-render the cart items
+            if (document.body.contains(document.getElementById('cart-page-container'))) {
+                renderCartItems();
+            }
+        } else {
+            displayFlashMessage(data.message || 'Failed to add item to cart.', 'danger');
+        }
+    } catch (error) {
+        console.error("Error adding to cart:", error);
+        displayFlashMessage(`Error: Could not add ${productName} to cart.`, 'danger');
+    }
 }
 
 // ======================== 🧾 Cart Rendering ========================
 async function renderCartItems() {
     const cartPageContainer = document.getElementById('cart-page-container');
-    if (!cartPageContainer) return;
+    if (!cartPageContainer) return; // Only run if on the actual cart page
 
     const cartItemsList = document.getElementById('cart-items-list');
     const cartTotalElement = document.getElementById('cart-total');
@@ -87,8 +139,10 @@ async function renderCartItems() {
         const response = await fetch('/cart/items');
         if (!response.ok) throw new Error(`Status: ${response.status}`);
         const data = await response.json();
-        const cart = Object.values(data.items || {});
-        cartItemsList.innerHTML = '';
+        // Ensure data.items is an array or convert the object of items to an array of its values
+        const cart = Array.isArray(data.items) ? data.items : Object.values(data.items || {});
+
+        cartItemsList.innerHTML = ''; // Clear existing items
         let total = 0;
 
         if (cart.length === 0) {
@@ -97,6 +151,8 @@ async function renderCartItems() {
             cartTotalElement.textContent = '0.00';
             totalAmountHiddenInput.value = '0.00';
             cartDataHiddenInput.value = '[]';
+            // Also ensure the header count reflects the empty cart
+            updateCartCountInHeader();
             return;
         } else {
             emptyCartMessage.style.display = 'none';
@@ -133,30 +189,47 @@ async function renderCartItems() {
         totalAmountHiddenInput.value = total.toFixed(2);
         cartDataHiddenInput.value = JSON.stringify(cart);
 
-        cartItemsList.addEventListener('click', e => {
-            const target = e.target;
-            const productId = target.closest('[data-product-id]')?.getAttribute('data-product-id');
-            if (!productId) return;
-
-            if (target.classList.contains('decrease-quantity')) {
-                updateQuantityInCart(productId, -1);
-            } else if (target.classList.contains('increase-quantity')) {
-                updateQuantityInCart(productId, 1);
-            } else if (target.closest('.remove-item-btn')) {
-                removeFromCart(productId);
-            }
-        });
-
+        // Re-attach event listeners for quantity and remove buttons after re-rendering
+        // Event delegation on `cartItemsList` is good, but ensure it's outside the loop
+        // and only attached once if this function can be called multiple times.
+        // For simplicity here, we'll re-attach listeners globally in initializeCartPageElements or use delegation.
+        // The current delegation inside renderCartItems works, but ensure it's not adding multiple listeners if renderCartItems is called often.
+        // A better approach for delegation is to set it up once in initializeCartPageElements.
+        // For now, let's keep it here but know it's a potential area for optimization.
+        // Ensure this listener is only added once. If renderCartItems is called multiple times,
+        // it will add duplicate listeners. Better to put this in initializeCartPageElements.
+        // Let's move it to initializeCartPageElements.
+        // The original design of adding it inside renderCartItems was problematic for multiple calls.
+        // It's removed from here now.
     } catch (err) {
         console.error('Failed to fetch cart items:', err);
         displayFlashMessage('Failed to load cart items. Try again.', 'danger');
     }
 }
 
+
 // ======================== 📦 Cart Page Elements (Fixed) ========================
 function initializeCartPageElements() {
     console.log('✅ Cart page elements initialized.');
-    // You can add additional logic here later if needed (e.g., promo code input)
+    const cartItemsList = document.getElementById('cart-items-list');
+
+    if (cartItemsList) {
+        // Use event delegation for quantity and remove buttons
+        cartItemsList.addEventListener('click', async (e) => {
+            const target = e.target;
+            const productId = target.closest('[data-product-id]')?.getAttribute('data-product-id');
+
+            if (!productId) return;
+
+            if (target.classList.contains('decrease-quantity') || (target.tagName === 'I' && target.closest('.decrease-quantity'))) {
+                await updateQuantityInCart(productId, -1);
+            } else if (target.classList.contains('increase-quantity') || (target.tagName === 'I' && target.closest('.increase-quantity'))) {
+                await updateQuantityInCart(productId, 1);
+            } else if (target.closest('.remove-item-btn')) {
+                await removeFromCart(productId);
+            }
+        });
+    }
 }
 
 // ======================== 💳 Payment Page ========================
@@ -201,13 +274,68 @@ function displayFlashMessage(message, type = 'info') {
     }, 3000);
 }
 
-// ======================== 🧠 Cart Update Stub ========================
-function updateQuantityInCart(productId, delta) {
-    console.log(`Cart: Update product ${productId} by ${delta}`);
-    displayFlashMessage(`Cart updated for product ${productId}`, 'success');
+// ======================== 🛒 Cart Update Functions (Backend Integration) ========================
+
+// Handles updating item quantity in the cart (increase/decrease)
+async function updateQuantityInCart(productId, delta) {
+    console.log(`Cart: Updating product ${productId} by ${delta}`);
+    try {
+        const response = await fetch('/cart/update_quantity', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ product_id: productId, delta: delta })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        }
+
+        const data = await response.json();
+        if (data.success) {
+            displayFlashMessage(data.message, 'success');
+            renderCartItems(); // Re-render the cart list to show updated quantities and total
+            updateCartCountInHeader(); // Update the header cart count
+        } else {
+            displayFlashMessage(data.message || 'Failed to update item quantity.', 'danger');
+        }
+    } catch (error) {
+        console.error("Error updating cart quantity:", error);
+        displayFlashMessage('Error: Could not update cart quantity.', 'danger');
+    }
 }
 
-function removeFromCart(productId) {
-    console.log(`Cart: Removed product ${productId}`);
-    displayFlashMessage(`Removed product ${productId}`, 'danger');
+// Handles removing an item from the cart
+async function removeFromCart(productId) {
+    console.log(`Cart: Removing product ${productId}`);
+    try {
+        const response = await fetch('/cart/remove_item', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ product_id: productId })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        }
+
+        const data = await response.json();
+        if (data.success) {
+            displayFlashMessage(data.message, 'success');
+            renderCartItems(); // Re-render the cart list
+            updateCartCountInHeader(); // Update the header cart count
+        } else {
+            displayFlashMessage(data.message || 'Failed to remove item.', 'danger');
+        }
+    } catch (error) {
+        console.error("Error removing item from cart:", error);
+        displayFlashMessage('Error: Could not remove item from cart.', 'danger');
+    }
 }
