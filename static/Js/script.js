@@ -1,73 +1,95 @@
 // ======================== 🚀 Initialize ========================
 document.addEventListener('DOMContentLoaded', () => {
-    if (typeof displayFlashMessages === 'function') displayFlashMessages(); // This runs once on load
-    updateCartCountInHeader(); // Initial update for header count
-
-    // Initialize Add to Cart buttons on all product pages
+    displayFlaskFlashMessages();
+    updateCartCountInHeader();
     initializeAddToCartButtons();
 
     const body = document.body;
 
-    // Check if on the cart page and render items
+   document.addEventListener("DOMContentLoaded", () => {
+    const body = document.body;
     if (body.contains(document.getElementById('cart-page-container'))) {
         renderCartItems();
-        initializeCartPageElements();
+        initializeCartPageElements();  // ✅ Make sure this function is already defined above
     }
+});
 
-    // Initialize payment options on payment page
+
     if (body.contains(document.getElementById('payment-page-container'))) {
         initializePaymentOptions();
     }
 
-    // Initialize account page (login/signup)
     const accountContainer = document.getElementById('container');
     if (body.contains(accountContainer)) {
-        initializeFlorinPopAccountPage(accountContainer);
+        initializeAccountPage(accountContainer);
     }
 
-    // Initialize admin panel
     if (body.contains(document.getElementById('admin-panel-container'))) {
         initializeAdminPanel();
     }
 
-    // Track Button placeholder
     const trackButton = document.querySelector('.track-button');
     if (trackButton) {
         trackButton.addEventListener('click', () => {
-            displayFlashMessage('📦 Tracking feature is coming soon!', 'info');
+            showFlashMessage('📦 Tracking feature is coming soon!', 'info');
         });
     }
 });
 
-// ======================== ✨ Flash Messages ========================
-// This is for auto-hiding static flash messages rendered by Flask
-function displayFlashMessages() {
-    const flashContainer = document.querySelector('.flash-messages');
-    if (flashContainer) {
-        flashContainer.style.display = 'block';
-        setTimeout(() => {
-            flashContainer.style.display = 'none';
-        }, 4000);
+// ======================== ✨ Flash Message Utilities ========================
+function showFlashMessage(message, type = 'info') {
+    const flashContainer = document.createElement('div');
+    flashContainer.className = `flash-messages ${type}`;
+    flashContainer.textContent = message;
+    document.body.appendChild(flashContainer);
+    setTimeout(() => flashContainer.remove(), 3000);
+}
+
+function displayFlaskFlashMessages() {
+    const flashMessagesDataElement = document.getElementById('flash-messages-data');
+    if (flashMessagesDataElement) {
+        try {
+            const flashMessages = JSON.parse(flashMessagesDataElement.textContent);
+            const flashMessageContainer = document.getElementById('flash-message-container');
+            if (flashMessages.length > 0 && flashMessageContainer) {
+                flashMessages.forEach(msg => {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = `alert alert-${msg.category} alert-dismissible fade show`;
+                    alertDiv.role = 'alert';
+                    alertDiv.innerHTML = `
+                        ${msg.message}
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    `;
+                    flashMessageContainer.appendChild(alertDiv);
+                });
+                flashMessagesDataElement.textContent = '[]';
+            }
+        } catch (e) {
+            console.error("Error parsing flash messages from Flask:", e);
+        }
     }
 }
 
-// ======================== 🛒 Cart Functions ========================
-
-// Fetches the latest cart count from the backend and updates the header icon
+// ======================== 🛒 Cart Functions (Core Logic) ========================
 async function updateCartCountInHeader() {
     try {
         const response = await fetch('/cart/total_quantity');
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
         const cartCounter = document.querySelector('.cart-count');
+        if (!response.ok) {
+            console.error(`Cart count fetch failed: ${response.status}`);
+            if (cartCounter) cartCounter.textContent = '0';
+            return;
+        }
+        const data = await response.json();
         if (cartCounter) {
-            cartCounter.textContent = data.total_quantity;
+            cartCounter.textContent = data.total_quantity > 0 ? data.total_quantity : '';
         }
     } catch (error) {
-        console.error("Failed to fetch cart total quantity:", error);
-        // Optionally set a default or error state for the cart count
+        console.error("Error fetching cart count:", error);
         const cartCounter = document.querySelector('.cart-count');
-        if (cartCounter) cartCounter.textContent = '0'; // Or '?'
+        if (cartCounter) cartCounter.textContent = '';
     }
 }
 
@@ -76,243 +98,16 @@ function initializeAddToCartButtons() {
     buttons.forEach(button => {
         button.addEventListener('click', () => {
             const productId = button.getAttribute('data-product-id');
-            // Extract product name if needed, or pass only ID and get name from server
             const productName = button.closest('.product-card')?.querySelector('h3')?.textContent || 'Unknown Product';
-            addToCart(productId, productName); // Pass product name for better flash message
+            addToCart(productId, productName);
         });
     });
 }
 
-// Sends product to backend to add to cart
 async function addToCart(productId, productName) {
-    console.log(`🧺 Attempting to add product ${productId} (${productName}) to cart...`);
+    console.log(`🧺 Adding ${productName} (${productId})`);
     try {
         const response = await fetch('/add_to_cart', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest' // Helps Flask distinguish AJAX
-            },
-            body: JSON.stringify({ product_id: productId }) // Only product_id needed, server fetches details
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-        }
-
-        const data = await response.json();
-        if (data.success) {
-            displayFlashMessage(data.message || `Successfully added ${productName} to cart!`, 'success');
-            updateCartCountInHeader(); // Update cart count in header immediately
-            // If on the cart page, re-render the cart items
-            if (document.body.contains(document.getElementById('cart-page-container'))) {
-                renderCartItems();
-            }
-        } else {
-            displayFlashMessage(data.message || 'Failed to add item to cart.', 'danger');
-        }
-    } catch (error) {
-        console.error("Error adding to cart:", error);
-        displayFlashMessage(`Error: Could not add ${productName} to cart.`, 'danger');
-    }
-}
-
-// ======================== 🧾 Cart Rendering ========================
-async function renderCartItems() {
-    const cartPageContainer = document.getElementById('cart-page-container');
-    if (!cartPageContainer) return; // Only run if on the actual cart page
-
-    const cartItemsList = document.getElementById('cart-items-list');
-    const cartTotalElement = document.getElementById('cart-total');
-    const emptyCartMessage = document.getElementById('empty-cart-message');
-    const cartSummarySection = document.getElementById('cart-summary-section');
-    const totalAmountHiddenInput = document.getElementById('total-amount-hidden');
-    const cartDataHiddenInput = document.getElementById('cart-data-hidden');
-
-    if (!cartItemsList || !cartTotalElement || !emptyCartMessage || !cartSummarySection || !totalAmountHiddenInput || !cartDataHiddenInput) {
-        console.error("Missing cart elements. Check your cart.html structure.");
-        return;
-    }
-
-    try {
-        const response = await fetch('/cart/items');
-        if (!response.ok) throw new Error(`Status: ${response.status}`);
-        const data = await response.json();
-        // Ensure data.items is an array or convert the object of items to an array of its values
-        const cart = Array.isArray(data.items) ? data.items : Object.values(data.items || {});
-
-        cartItemsList.innerHTML = ''; // Clear existing items
-        let total = 0;
-
-        if (cart.length === 0) {
-            emptyCartMessage.style.display = 'block';
-            cartSummarySection.style.display = 'none';
-            cartTotalElement.textContent = '0.00';
-            totalAmountHiddenInput.value = '0.00';
-            cartDataHiddenInput.value = '[]';
-            // Also ensure the header count reflects the empty cart
-            updateCartCountInHeader();
-            return;
-        } else {
-            emptyCartMessage.style.display = 'none';
-            cartSummarySection.style.display = 'block';
-        }
-
-        cart.forEach(item => {
-            const itemPrice = parseFloat(item.price) || 0;
-            const itemQuantity = parseInt(item.quantity) || 0;
-            total += itemPrice * itemQuantity;
-            const imagePath = `/static/images/${item.image_path}`;
-
-            const cartItem = document.createElement('div');
-            cartItem.className = 'cart-item';
-            cartItem.innerHTML = `
-                <img src="${imagePath}" alt="${item.name}" class="cart-item-img">
-                <div class="item-details">
-                    <h3>${item.name}</h3>
-                    <p class="item-subtotal">ETB ${(itemPrice * itemQuantity).toFixed(2)}</p>
-                    <div class="quantity-controls">
-                        <button type="button" class="quantity-btn decrease-quantity" data-product-id="${item.id}">-</button>
-                        <span class="item-quantity">${itemQuantity}</span>
-                        <button type="button" class="quantity-btn increase-quantity" data-product-id="${item.id}">+</button>
-                    </div>
-                </div>
-                <button type="button" class="remove-item-btn" data-product-id="${item.id}" title="Remove item">
-                    <i class="fas fa-trash"></i>
-                </button>
-            `;
-            cartItemsList.appendChild(cartItem);
-        });
-
-        cartTotalElement.textContent = total.toFixed(2);
-        totalAmountHiddenInput.value = total.toFixed(2);
-        cartDataHiddenInput.value = JSON.stringify(cart);
-
-        // Re-attach event listeners for quantity and remove buttons after re-rendering
-        // Event delegation on `cartItemsList` is good, but ensure it's outside the loop
-        // and only attached once if this function can be called multiple times.
-        // For simplicity here, we'll re-attach listeners globally in initializeCartPageElements or use delegation.
-        // The current delegation inside renderCartItems works, but ensure it's not adding multiple listeners if renderCartItems is called often.
-        // A better approach for delegation is to set it up once in initializeCartPageElements.
-        // For now, let's keep it here but know it's a potential area for optimization.
-        // Ensure this listener is only added once. If renderCartItems is called multiple times,
-        // it will add duplicate listeners. Better to put this in initializeCartPageElements.
-        // Let's move it to initializeCartPageElements.
-        // The original design of adding it inside renderCartItems was problematic for multiple calls.
-        // It's removed from here now.
-    } catch (err) {
-        console.error('Failed to fetch cart items:', err);
-        displayFlashMessage('Failed to load cart items. Try again.', 'danger');
-    }
-}
-
-
-// ======================== 📦 Cart Page Elements (Fixed) ========================
-function initializeCartPageElements() {
-    console.log('✅ Cart page elements initialized.');
-    const cartItemsList = document.getElementById('cart-items-list');
-
-    if (cartItemsList) {
-        // Use event delegation for quantity and remove buttons
-        cartItemsList.addEventListener('click', async (e) => {
-            const target = e.target;
-            const productId = target.closest('[data-product-id]')?.getAttribute('data-product-id');
-
-            if (!productId) return;
-
-            if (target.classList.contains('decrease-quantity') || (target.tagName === 'I' && target.closest('.decrease-quantity'))) {
-                await updateQuantityInCart(productId, -1);
-            } else if (target.classList.contains('increase-quantity') || (target.tagName === 'I' && target.closest('.increase-quantity'))) {
-                await updateQuantityInCart(productId, 1);
-            } else if (target.closest('.remove-item-btn')) {
-                await removeFromCart(productId);
-            }
-        });
-    }
-}
-
-// ======================== 💳 Payment Page ========================
-function initializePaymentOptions() {
-    const options = document.querySelectorAll('input[name="payment-method"]');
-    options.forEach(option => {
-        option.addEventListener('change', () => {
-            displayFlashMessage(`💳 You selected: ${option.value}`, 'info');
-        });
-    });
-}
-
-// ======================== 🔐 Account Page ========================
-function initializeFlorinPopAccountPage(container) {
-    const loginBtn = container.querySelector('.login');
-    const signupBtn = container.querySelector('.signup');
-    const formWrapper = container;
-
-    loginBtn?.addEventListener('click', () => {
-        formWrapper.classList.remove('active');
-    });
-
-    signupBtn?.addEventListener('click', () => {
-        formWrapper.classList.add('active');
-    });
-}
-
-// ======================== 🛠️ Admin Panel (Stub) ========================
-function initializeAdminPanel() {
-    console.log("Admin panel initialized.");
-}
-
-// ======================== 🔔 Flash Message Utility ========================
-function displayFlashMessage(message, type = 'info') {
-    const flashContainer = document.createElement('div');
-    flashContainer.className = `flash-messages ${type}`;
-    flashContainer.textContent = message;
-
-    document.body.appendChild(flashContainer);
-    setTimeout(() => {
-        flashContainer.remove();
-    }, 3000);
-}
-
-// ======================== 🛒 Cart Update Functions (Backend Integration) ========================
-
-// Handles updating item quantity in the cart (increase/decrease)
-async function updateQuantityInCart(productId, delta) {
-    console.log(`Cart: Updating product ${productId} by ${delta}`);
-    try {
-        const response = await fetch('/cart/update_quantity', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ product_id: productId, delta: delta })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-        }
-
-        const data = await response.json();
-        if (data.success) {
-            displayFlashMessage(data.message, 'success');
-            renderCartItems(); // Re-render the cart list to show updated quantities and total
-            updateCartCountInHeader(); // Update the header cart count
-        } else {
-            displayFlashMessage(data.message || 'Failed to update item quantity.', 'danger');
-        }
-    } catch (error) {
-        console.error("Error updating cart quantity:", error);
-        displayFlashMessage('Error: Could not update cart quantity.', 'danger');
-    }
-}
-
-// Handles removing an item from the cart
-async function removeFromCart(productId) {
-    console.log(`Cart: Removing product ${productId}`);
-    try {
-        const response = await fetch('/cart/remove_item', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -321,21 +116,193 @@ async function removeFromCart(productId) {
             body: JSON.stringify({ product_id: productId })
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-        }
-
-        const data = await response.json();
-        if (data.success) {
-            displayFlashMessage(data.message, 'success');
-            renderCartItems(); // Re-render the cart list
-            updateCartCountInHeader(); // Update the header cart count
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+            const data = await response.json();
+            if (response.ok) {
+                showFlashMessage(data.message || `Added ${productName} to cart!`, 'success');
+                updateCartCountInHeader();
+                if (document.body.contains(document.getElementById('cart-page-container'))) renderCartItems();
+            } else {
+                showFlashMessage(data.message || 'Could not add item.', 'danger');
+                if (response.status === 401) setTimeout(() => window.location.href = '/account', 1500);
+            }
         } else {
-            displayFlashMessage(data.message || 'Failed to remove item.', 'danger');
+            const errorText = await response.text();
+            console.error("Non-JSON response:", errorText);
+            showFlashMessage(`Error: Could not add ${productName}.`, 'danger');
+            if (errorText.includes('Login required')) setTimeout(() => window.location.href = '/account', 1500);
         }
     } catch (error) {
-        console.error("Error removing item from cart:", error);
-        displayFlashMessage('Error: Could not remove item from cart.', 'danger');
+        console.error("Add to cart failed:", error);
+        showFlashMessage(`Network error adding ${productName}.`, 'danger');
     }
+}
+
+async function updateQuantityInCart(productId, delta) {
+    try {
+        const response = await fetch('/cart/update_quantity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_id: productId, delta: delta })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showFlashMessage(data.message, 'success');
+            updateCartCountInHeader();
+            renderCartItems();
+        } else {
+            showFlashMessage(data.message || 'Update failed.', 'danger');
+            if (response.status === 401) setTimeout(() => window.location.href = '/account', 1500);
+        }
+    } catch (error) {
+        console.error("Update quantity error:", error);
+        showFlashMessage('Quantity update failed.', 'danger');
+    }
+}
+
+async function removeFromCart(productId) {
+    if (!confirm("Remove this item?")) return;
+    try {
+        const response = await fetch('/cart/remove_item', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_id: productId })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            showFlashMessage(data.message, 'info');
+            updateCartCountInHeader();
+            renderCartItems();
+        } else {
+            showFlashMessage(data.message || 'Remove failed.', 'warning');
+            if (response.status === 401) setTimeout(() => window.location.href = '/account', 1500);
+        }
+    } catch (error) {
+        console.error("Remove item error:", error);
+        showFlashMessage('Error removing item.', 'danger');
+    }
+}
+
+// ======================== 🧾 Cart Page Rendering ========================
+async function renderCartItems() {
+    const cartItemsList = document.getElementById('cart-items-list');
+    const cartTotalElement = document.getElementById('cart-total');
+    const emptyCartMessage = document.getElementById('empty-cart-message');
+    const cartSummarySection = document.getElementById('cart-summary-section');
+    const totalAmountHiddenInput = document.getElementById('total-amount-hidden');
+    const cartDataHiddenInput = document.getElementById('cart-data-hidden');
+
+    try {
+        const response = await fetch('/cart/items');
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                console.warn("401 Unauthorized: User not logged in.");
+                showFlashMessage("Please log in to view your cart.", "warning");
+                return;
+            } else if (response.status === 404) {
+                console.warn("404 Not Found: /cart/items endpoint is missing.");
+                showFlashMessage("Cart service not available.", "danger");
+                return;
+            } else {
+                throw new Error(`Unexpected response status: ${response.status}`);
+            }
+        }
+
+        let data;
+        try {
+            data = await response.json();
+        } catch (jsonErr) {
+            console.error("Failed to parse JSON from /cart/items:", jsonErr);
+            showFlashMessage("Invalid response from server.", "danger");
+            return;
+        }
+
+        const cart = Array.isArray(data.items) ? data.items : Object.values(data.items || {});
+        cartItemsList.innerHTML = '';
+        let total = 0;
+
+        if (cart.length === 0) {
+            emptyCartMessage.style.display = 'block';
+            cartSummarySection.style.display = 'none';
+            cartTotalElement.textContent = '0.00';
+            totalAmountHiddenInput.value = '0.00';
+            cartDataHiddenInput.value = '[]';
+            updateCartCountInHeader();
+            return;
+        } else {
+            emptyCartMessage.style.display = 'none';
+            cartSummarySection.style.display = 'block';
+        }
+
+        cart.forEach(item => {
+            const price = parseFloat(item.price) || 0;
+            const quantity = parseInt(item.quantity) || 0;
+            const subtotal = price * quantity;
+            total += subtotal;
+            const imagePath = `/static/${item.image_path}`;
+            const div = document.createElement('div');
+            div.className = 'cart-item';
+            div.innerHTML = `
+                <img src="${imagePath}" alt="${item.name}" class="cart-item-img">
+                <div class="item-details">
+                    <h3>${item.name}</h3>
+                    <p class="item-price">ETB ${price.toFixed(2)}</p>
+                    <p class="item-subtotal">Subtotal: ETB ${subtotal.toFixed(2)}</p>
+                    <div class="quantity-controls">
+                        <button type="button" class="quantity-btn decrease-quantity" data-product-id="${item.id}">-</button>
+                        <span class="item-quantity">${quantity}</span>
+                        <button type="button" class="quantity-btn increase-quantity" data-product-id="${item.id}">+</button>
+                    </div>
+                </div>
+                <button type="button" class="remove-item-btn" data-product-id="${item.id}" title="Remove item">
+                    <i class="fas fa-trash"></i>
+                </button>
+            `;
+            cartItemsList.appendChild(div);
+        });
+
+        cartTotalElement.textContent = total.toFixed(2);
+        totalAmountHiddenInput.value = total.toFixed(2);
+        cartDataHiddenInput.value = JSON.stringify(cart);
+        updateCartCountInHeader();
+
+    } catch (err) {
+        console.error("Cart fetch error:", err);
+        showFlashMessage('Something went wrong while loading your cart.', 'danger');
+    }
+}
+
+// ======================== 💳 Payment Page ========================
+function initializePaymentOptions() {
+    const radios = document.querySelectorAll('input[name="payment_method"]');
+    const telebirr = document.getElementById('telebirr-details');
+    const cbebirr = document.getElementById('cbebirr-details');
+
+    const toggleSections = () => {
+        if (telebirr) telebirr.style.display = 'none';
+        if (cbebirr) cbebirr.style.display = 'none';
+
+        const selected = document.querySelector('input[name="payment_method"]:checked')?.value;
+        if (selected === 'telebirr' && telebirr) telebirr.style.display = 'block';
+        else if (selected === 'cbebirr' && cbebirr) cbebirr.style.display = 'block';
+    };
+
+    radios.forEach(radio => radio.addEventListener('change', toggleSections));
+    toggleSections(); // Init on load
+}
+
+// ======================== 🔐 Account Page ========================
+function initializeAccountPage(container) {
+    const loginBtn = container.querySelector('.login');
+    const signupBtn = container.querySelector('.signup');
+    loginBtn?.addEventListener('click', () => container.classList.remove('active'));
+    signupBtn?.addEventListener('click', () => container.classList.add('active'));
+}
+
+// ======================== 🛠️ Admin Panel ========================
+function initializeAdminPanel() {
+    console.log("Admin panel initialized.");
 }

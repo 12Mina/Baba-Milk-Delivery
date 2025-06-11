@@ -85,7 +85,7 @@ header {
 
 /* Hero Section */
 .hero {
-    background: url('../images/hero-bg.jpg') no-repeat center center/cover;
+    background: url('images/background.png') no-repeat center center/cover;
     color: #fff;
     text-align: center;
     padding: 100px 20px;

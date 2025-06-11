@@ -4,13 +4,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from datetime import datetime
 import json
-from sqlalchemy import inspect, text
 import secrets
 import functools
 
 # --- Flask Application Setup ---
 app = Flask(__name__)
 
+# IMPORTANT: Change this to a strong, random key in production!
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///baba_milk.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -110,24 +110,24 @@ def load_logged_in_user():
     if user_id is not None:
         g.user = User.query.get(user_id)
 
-# --- Route Decorators for Authentication and Authorization ---
+# --- Route Decorators for Authentication and Authorization (ONLY for HTML routes) ---
 def login_required(f):
+    """Decorator to check if a user is logged in. Redirects to account page if not."""
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
             set_flash_message('Please login to access this page.', 'warning')
-            if request.accept_mimetypes.accept_json and \
-               not request.accept_mimetypes.accept_html:
-                return jsonify(success=False, message="Authentication required."), 401
             return redirect(url_for('account'))
         return f(*args, **kwargs)
     return decorated_function
 
 def admin_required(f):
+    """Decorator to check if a user is logged in and is an admin. Redirects if not authorized."""
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session or not session.get('is_admin'):
             set_flash_message('Access denied. You are not authorized to view this page.', 'danger')
+            # For admin API endpoints, return JSON error (if needed for API calls)
             if request.accept_mimetypes.accept_json and \
                not request.accept_mimetypes.accept_html:
                 return jsonify(success=False, message="Authorization required (Admin access)."), 403
@@ -217,7 +217,7 @@ def signup():
         return redirect(url_for('account'))
 
 @app.route('/dashboard')
-@login_required
+@login_required # This is an HTML page, requires redirect if not logged in
 def dashboard():
     user_id = session['user_id']
     orders = Order.query.filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
@@ -272,42 +272,39 @@ def logout():
 
 @app.route('/cart')
 def cart():
-    return render_template('cart.html')
+    # Pass user's default phone and address to cart.html if available
+    user_phone = None
+    user_address = None
+    if g.user:
+        user_phone = g.user.phone
+        user_address = g.user.address
+    return render_template('cart.html', user_phone=user_phone, user_address=user_address)
 
-# --- Cart Management API Endpoints (using Flask Session) ---
+# --- Cart Management API Endpoints (with JSON + session authentication) ---
+
+# ----------------- Cart Management -----------------
 
 @app.route('/add_to_cart', methods=['POST'])
-@login_required
 def add_to_cart():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Authentication required.'}), 401
+
     try:
         data = request.get_json()
-        product_id_str = str(data.get('product_id'))
+        product_id = str(data.get('product_id'))
+        name = data.get('name')
+        price = float(data.get('price'))
+        image = data.get('image')
 
-        if not product_id_str:
-            return jsonify({'success': False, 'message': 'Missing product ID.'}), 400
+        cart = session.get('cart', {})
 
-        try:
-            product_id_int = int(product_id_str)
-        except ValueError:
-            return jsonify({'success': False, 'message': 'Invalid product ID format.'}), 400
-
-        product = Product.query.get(product_id_int)
-        if not product:
-            return jsonify({'success': False, 'message': 'Product not found.'}), 404
-
-        if 'cart' not in session:
-            session['cart'] = {}
-
-        cart = session['cart']
-
-        if product_id_str in cart:
-            cart[product_id_str]['quantity'] += 1
+        if product_id in cart:
+            cart[product_id]['quantity'] += 1
         else:
-            cart[product_id_str] = {
-                'id': product_id_str,
-                'name': product.name,
-                'price': float(product.price),
-                'image_path': product.image_path,
+            cart[product_id] = {
+                'name': name,
+                'price': price,
+                'image': image,
                 'quantity': 1
             }
 
@@ -315,15 +312,23 @@ def add_to_cart():
         session.modified = True
 
         total_quantity = sum(item['quantity'] for item in cart.values())
-        return jsonify({'success': True, 'message': f'{product.name} added to cart!', 'total_quantity': total_quantity})
+
+        return jsonify({'success': True, 'message': f'{name} added to cart!', 'total_quantity': total_quantity})
 
     except Exception as e:
         app.logger.error(f"Error adding to cart: {e}")
-        return jsonify({'success': False, 'message': 'An error occurred while adding to cart.'}), 500
+        return jsonify({'success': False, 'message': 'Failed to add item to cart.'}), 500
 
 @app.route('/cart/update_quantity', methods=['POST'])
-@login_required
 def update_cart_quantity():
+    """Update quantity of an item in the cart."""
+    if 'user_id' not in session:
+        return jsonify({
+            'success': False,
+            'error': 'Not logged in',
+            'message': 'Authentication required. Please log in to proceed.'
+        }), 401
+
     try:
         data = request.get_json()
         product_id = str(data.get('product_id'))
@@ -338,15 +343,16 @@ def update_cart_quantity():
         new_quantity = current_quantity + delta
 
         if new_quantity <= 0:
+            item_name = cart[product_id]['name']
             del cart[product_id]
-            message = f"{cart[product_id]['name']} removed from cart." if 'name' in cart[product_id] else "Item removed from cart."
+            message = f"{item_name} removed from cart."
         else:
             cart[product_id]['quantity'] = new_quantity
             message = f"{cart[product_id]['name']} quantity updated to {new_quantity}."
 
         session['cart'] = cart
         session.modified = True
-        
+
         total_quantity = sum(item['quantity'] for item in cart.values())
         return jsonify({'success': True, 'message': message, 'total_quantity': total_quantity})
 
@@ -354,9 +360,19 @@ def update_cart_quantity():
         app.logger.error(f"Error updating cart quantity: {e}")
         return jsonify({'success': False, 'message': 'An error occurred while updating quantity.'}), 500
 
-@app.route('/cart/remove_item', methods=['POST'])
-@login_required
-def remove_item_from_cart():
+@app.route('/cart/items')
+def get_cart_items():
+    """Return the current items in the user's cart."""
+    if 'user_id' not in session:
+        return jsonify({
+            'success': False,
+            'error': 'Not logged in',
+            'message': 'Authentication required. Please log in to view cart.'
+        }), 401
+
+    cart = session.get('cart', {})  # Default to empty cart
+    return jsonify({'items': list(cart.values())})
+
     try:
         data = request.get_json()
         product_id = str(data.get('product_id'))
@@ -378,25 +394,22 @@ def remove_item_from_cart():
         app.logger.error(f"Error removing item from cart: {e}")
         return jsonify({'success': False, 'message': 'An error occurred while removing item.'}), 500
 
-@app.route('/cart/items')
-def get_cart_items():
-    if 'user_id' not in session:
-        set_flash_message('Please log in to view your cart items.', 'info')
-        return jsonify({'items': {}, 'message': 'Login required to view cart.'}), 200
-
-    return jsonify({'items': session.get('cart', {})})
 
 @app.route('/cart/total_quantity')
 def get_cart_total_quantity():
+    """Return total number of items in the cart (visible in navbar/cart icon)."""
     total_quantity = 0
     if 'user_id' in session:
         total_quantity = sum(item['quantity'] for item in session.get('cart', {}).values())
     return jsonify({'total_quantity': total_quantity})
 
 
+# ----------------- Checkout & Payment -----------------
+
 @app.route('/checkout_delivery', methods=['POST'])
-@login_required
+@login_required  # this decorator must be implemented elsewhere
 def checkout_delivery():
+    """Handle delivery information form submission."""
     delivery_phone = request.form.get('delivery_phone')
     delivery_address = request.form.get('delivery_address')
 
@@ -416,20 +429,22 @@ def checkout_delivery():
 
     return redirect(url_for('payment'))
 
+
 @app.route('/payment')
 @login_required
 def payment():
+    """Render the payment page with cart and delivery info."""
     if 'delivery_info' not in session:
         set_flash_message('Please provide delivery details first.', 'warning')
         return redirect(url_for('cart'))
-    
+
     cart_items = session.get('cart', {}).values()
     total_amount = sum(item['price'] * item['quantity'] for item in cart_items)
 
     return render_template('payment.html', cart_items=list(cart_items), total_amount=total_amount)
 
 @app.route('/finalize_order', methods=['POST'])
-@login_required
+@login_required # This is an HTML form submission, requires redirect if not logged in
 def finalize_order():
     user_id = session['user_id']
     user = User.query.get(user_id)
@@ -530,7 +545,7 @@ def finalize_order():
         return redirect(url_for('cart'))
 
 @app.route('/admin')
-@admin_required
+@admin_required # This is an HTML page, requires redirect if not logged in
 def admin():
     orders = Order.query.order_by(Order.created_at.desc()).all()
 
@@ -566,7 +581,7 @@ def admin():
     return render_template('admin.html', orders=order_details)
 
 @app.route('/update_order_status', methods=['POST'])
-@admin_required
+@admin_required # This is an HTML form submission, requires redirect if not logged in
 def update_order_status():
     order_id = request.form.get('order_id')
     new_status = request.form.get('status')
@@ -599,23 +614,19 @@ def update_order_status():
     return redirect(url_for('admin'))
 
 # --- Application Initialization ---
-# This block is typically run when the script is executed directly
-# to create the database tables and populate initial product data.
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
 
-        # Check if products already exist to prevent duplicates on every run
         if not Product.query.first():
             print("Populating products table...")
             for p_data in products_data:
-                # Construct image_path dynamically
-                image_name = f"product{p_data['image_suffix']}.png" # Assuming .png
+                image_name = f"product{p_data['image_suffix']}.png"
                 new_product = Product(
                     name=p_data['name'],
                     category=p_data['category'],
                     price=p_data['price'],
-                    image_path=os.path.join('images', image_name), # Store path relative to static
+                    image_path=os.path.join('images', image_name),
                     description=p_data['description']
                 )
                 db.session.add(new_product)
@@ -624,9 +635,6 @@ if __name__ == '__main__':
         else:
             print("Products already exist in the database.")
             
-        # Optional: Create an admin user if none exists (for testing/setup)
-        # You'd typically want a more secure way to manage initial admin creation
-        # or have a separate script for it.
         if not User.query.filter_by(is_admin=True).first():
             print("Creating a default admin user...")
             admin_user = User(
@@ -634,7 +642,7 @@ if __name__ == '__main__':
                 lastname="User",
                 phone="0911223344",
                 email="admin@example.com",
-                password=generate_password_hash("adminpass"), # Change this strong password!
+                password=generate_password_hash("adminpass"),
                 is_admin=True,
                 address="Admin Office"
             )
