@@ -14,12 +14,9 @@
             <div class="order-header">
                 <h3>Order #{{ order.id }}</h3>
                 <span class="order-status status-{{ order.status.lower().replace(' ', '_') }}">
-                    {% if order.status == 'pending_payment_telebirr' %}
-                        Payment Pending (Telebirr)
-                    {% elif order.status == 'pending_payment_cbebirr' %}
-                        Payment Pending (CBE Birr)
-                    {% else %}
-                        {{ order.status.replace('_', ' ').capitalize() }}
+                    {% if order.status == 'pending_payment_telebirr' %}Payment Pending (Telebirr)
+                    {% elif order.status == 'pending_payment_cbebirr' %}Payment Pending (CBE Birr)
+                    {% else %}{{ order.status.replace('_', ' ').capitalize() }}
                     {% endif %}
                 </span>
             </div>
@@ -29,69 +26,27 @@
                 <p><strong>Delivery Address:</strong> {{ order.delivery_address }}</p>
                 <p><strong>Delivery Phone:</strong> {{ order.delivery_phone }}</p>
                 <p><strong>Payment Method:</strong> {{ order.payment_method.replace('_', ' ').title() }}</p>
-                {# Display payment details if they exist #}
-                {% if order.payment_method != 'cash_on_delivery' %}
-                    {% if order.payment_details %}
-                        <p><strong>Payment Details:</strong>
-                            {% if order.payment_details.phone %}
-                                Phone: {{ order.payment_details.phone }}
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </p>
-                    {% endif %}
+                {% if order.payment_details.phone %}
+                <p><strong>Payment Phone:</strong> {{ order.payment_details.phone }}</p>
                 {% endif %}
                 <p><strong>Items:</strong> <span class="order-items">{{ order.items }}</span></p>
 
                 <div class="order-tracker">
-                    {# Define the full path of possible statuses #}
-                    {% set all_tracker_statuses = ['placed', 'confirmed', 'out_for_delivery', 'delivered'] %}
-                    {% set current_status_found = false %}
-
-                    {% for status_key in all_tracker_statuses %}
-                        {% set is_completed = false %}
-                        {% set is_current = false %}
-
-                        {# Determine if this status is completed or current #}
-                        {% if order.status == status_key %}
-                            {% set is_completed = true %}
-                            {% set is_current = true %}
-                            {% set current_status_found = true %}
-                        {% elif not current_status_found and loop.index0 <= order.current_status_index %}
-                            {% set is_completed = true %}
-                        {% endif %}
-                        
-                        {# Handle pending payment as a 'start' state that is not 'completed' until confirmed #}
-                        {% if order.status.startswith('pending_payment') and status_key == 'placed' %}
-                             {% set is_completed = true %} {# 'Placed' is considered "completed" if payment is pending #}
-                             {% if not current_status_found %}{% set is_current = true %}{% set current_status_found = true %}{% endif %}
-                        {% endif %}
-                        {# If 'packed' status, treat 'confirmed' as current/completed #}
-                        {% if order.status == 'packed' and status_key == 'confirmed' %}
-                            {% set is_completed = true %}
-                            {% if not current_status_found %}{% set is_current = true %}{% set current_status_found = true %}{% endif %}
-                        {% endif %}
-
-
-                        <div class="tracker-step {% if is_completed %}completed{% endif %} {% if is_current %}current{% endif %}">
+                    {% for status in order.tracker_statuses %}
+                        {% set current_index = loop.index0 %}
+                        <div class="tracker-step {% if current_index <= order.current_status_index %}completed{% endif %} {% if current_index == order.current_status_index %}current{% endif %}">
                             <div class="tracker-dot"></div>
                             <div class="tracker-label">
-                                {% if status_key == 'placed' %}Order Placed
-                                {% elif status_key == 'confirmed' %}Confirmed
-                                {% elif status_key == 'out_for_delivery' %}Out for Delivery
-                                {% elif status_key == 'delivered' %}Delivered
-                                {% else %}{{ status_key | capitalize }} {# Fallback #}
+                                {% if status == 'placed' %}Order Placed
+                                {% elif status == 'confirmed' %}Confirmed
+                                {% elif status == 'out_for_delivery' %}Out for Delivery
+                                {% elif status == 'delivered' %}Delivered
                                 {% endif %}
                             </div>
                         </div>
+                        {% if not loop.last %}
+                            {% endif %}
                     {% endfor %}
-                    {# Special handling for 'cancelled' order if it's the final status #}
-                    {% if order.status == 'cancelled' %}
-                        <div class="tracker-step cancelled current">
-                            <div class="tracker-dot"></div>
-                            <div class="tracker-label">Cancelled</div>
-                        </div>
-                    {% endif %}
                 </div>
             </div>
         </div>
@@ -101,5 +56,4 @@
     <p>You haven't placed any orders yet. <a href="{{ url_for('home') }}">Start shopping!</a></p>
     {% endif %}
 </div>
-{# script.js is already included in base.html, no need to include again #}
 {% endblock %}

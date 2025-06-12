@@ -8,6 +8,7 @@
 
     <div class="payment-summary">
         <p>Order Total: ETB <span id="payment-total-amount">{{ total_amount | float | round(2) }}</span></p>
+        <p>Order Total: ETB <span id="payment-total-amount">0.00</span></p>
         <p class="help-text">Please select a payment method below.</p>
     </div>
 
@@ -29,7 +30,11 @@
                 </label>
             </div>
             <div id="telebirr-details" class="payment-details-form hidden">
+<<<<<<< HEAD
                 <p class="help-text">Please send ETB <span id="telebirr-amount">{{ total_amount | float | round(2) }}</span> to our Telebirr number: <strong>+251 9XX XXX XXXX</strong></p>
+=======
+                <p class="help-text">Please send ETB <span id="telebirr-amount">0.00</span> to our Telebirr number: <strong>+251 9XX XXX XXXX</strong></p>
+>>>>>>> a15e53556d32460bf4690ea4110d25fb636654a7
                 <div class="form-group">
                     <label for="telebirr_phone">Your Telebirr Phone Number:</label>
                     <input type="tel" id="telebirr_phone" name="telebirr_phone" placeholder="e.g., 09xxxxxxxx">
@@ -45,6 +50,9 @@
             </div>
             <div id="cbebirr-details" class="payment-details-form hidden">
                 <p class="help-text">Please send ETB <span id="cbebirr-amount">{{ total_amount | float | round(2) }}</span> to our CBE Birr number: <strong>+251 9YY YYY YYYY</strong></p>
+=======
+                <p class="help-text">Please send ETB <span id="cbebirr-amount">0.00</span> to our CBE Birr number: <strong>+251 9YY YYY YYYY</strong></p>
+
                 <div class="form-group">
                     <label for="cbebirr_phone">Your CBE Birr Phone Number:</label>
                     <input type="tel" id="cbebirr_phone" name="cbebirr_phone" placeholder="e.g., 09yyyyyyyy">
@@ -53,6 +61,7 @@
             </div>
         </div>
 
+
         <input type="hidden" id="total-amount-hidden-payment" name="total_amount" value="{{ total_amount | float | round(2) }}">
         <input type="hidden" id="cart-data-hidden-payment" name="cart_data" value="{{ cart_items | tojson | safe }}">
 
@@ -60,4 +69,12 @@
     </form>
 </div>
 {# script.js is already included in base.html, no need to include again #}
+{% endblock %}
+=======
+        <input type="hidden" id="total-amount-hidden-payment" name="total_amount" value="0.00">
+        <input type="hidden" id="cart-data-hidden-payment" name="cart_data" value="[]">
+
+        <button type="submit" class="btn-primary finalize-order-btn">Place Order</button>
+    </form>
+</div>
 {% endblock %}
