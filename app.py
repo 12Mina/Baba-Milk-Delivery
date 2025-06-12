@@ -4,7 +4,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from datetime import datetime, timedelta # Import timedelta for session lifetime
 import json
-import secrets # Still used, but its output will be ignored for SECRET_KEY
+import secrets 
+import functools # <--- CRITICAL FIX: ADDED THIS IMPORT
 
 # --- Flask Application Setup ---
 app = Flask(__name__)
@@ -402,7 +403,7 @@ def add_to_cart():
                 'name': product.name,
                 'price': float(product.price),
                 # Store ONLY the filename in cart session data for image_path
-                'image_path': product.image_path, # <-- IMPORTANT CHANGE!
+                'image_path': product.image_path, # This is just the filename now
                 'quantity': 1
             }
 
@@ -755,7 +756,7 @@ if __name__ == '__main__':
 
             print("Populating products table...")
             for p_data in products_data:
-                # CRITICAL FIX: Store ONLY the filename in the database
+                # Store ONLY the filename in the database
                 image_name = f"product{p_data['image_suffix']}.png"
                 new_product = Product(
                     name=p_data['name'],
