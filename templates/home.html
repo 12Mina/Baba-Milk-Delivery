@@ -25,7 +25,7 @@
         <h2 class="section-title">All Our Products</h2>
         <div class="container">
             <section id="milk-products" class="category-section">
-                <h2 class="category-title">🥛 Our Milk Products</h2>
+                <h2 class="category-title">🥛 Fresh Milk</h2>
                 <div class="product-grid">
                     {% for product in milk_products %}
                     <div class="product-card">
@@ -45,7 +45,7 @@
             </section>
 
             <section id="yogurt-products" class="category-section">
-                <h2 class="category-title">🍶 Delicious Yogurt</h2>
+                <h2 class="category-title">🍦 Delicious Yogurt</h2>
                 <div class="product-grid">
                     {% for product in yogurt_products %}
                     <div class="product-card">
@@ -65,7 +65,7 @@
             </section>
 
             <section id="cheese-products" class="category-section">
-                <h2 class="category-title">🧀 Fresh Cheese</h2>
+                <h2 class="category-title">🧀 Artisan Cheese</h2>
                 <div class="product-grid">
                     {% for product in cheese_products %}
                     <div class="product-card">
@@ -107,10 +107,10 @@
     </section>
 
     <section class="tracking-section">
-        <h2>📦 Order Tracking</h2>
+        <h2>🚚 Order Tracking</h2>
         <p>Track your deliveries and get real-time updates, just like Amazon. This feature helps you know exactly where your milk is!</p>
-        <a href="{{ url_for('dashboard') }}" class="track-button">📊 Go to Dashboard</a>
+        <a href="{{ url_for('dashboard') }}" class="track-button">📦 Go to Dashboard</a>
     </section>
 
-    <script src="{{ url_for('static', filename='Js/script.js') }}"></script>
+    {# script.js is already included in base.html, so no need to include it again #}
 {% endblock %}

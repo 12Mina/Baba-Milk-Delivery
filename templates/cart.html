@@ -6,15 +6,10 @@
 <div class="cart-page-container" id="cart-page-container">
     <h2>Your Shopping Cart</h2>
 
-    <!-- Flash Messages for Cart/Delivery -->
-    <div class="flash-messages" id="cart-flash">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+    {# Flash Messages for Cart/Delivery (handled by base.html's flash-message-container now) #}
+    {# The following div is no longer strictly necessary for Flask flash messages but can remain for specific cart-related local messages #}
+    <div class="flash-messages" id="cart-flash" style="display: none;">
+        {# Content will be injected by JavaScript if needed #}
     </div>
 
     <!-- Empty Cart Message -->
@@ -24,7 +19,7 @@
     </div>
 
     <!-- Cart Summary & Items -->
-    <div id="cart-summary-section">
+    <div id="cart-summary-section" style="display: none;"> {# Hidden by default, shown by JS if cart has items #}
         <!-- Cart Items List -->
         <div class="cart-items-list" id="cart-items-list">
             <!-- Rendered dynamically by JS -->
@@ -34,30 +29,32 @@
         <div class="coupon-section">
             <label for="coupon-code">Have a coupon?</label>
             <input type="text" id="coupon-code" placeholder="Enter code">
-            <button type="button" id="apply-coupon" class="btn-secondary">Apply</button>
-            <p id="coupon-feedback" class="feedback-text"></p>
+            <button type="button" class="btn-secondary">Apply Coupon</button>
+            <span class="coupon-message" id="coupon-message"></span>
         </div>
 
-        <!-- Total & Checkout -->
-        <div class="cart-summary">
-            <p><strong>Total:</strong> ETB <span id="cart-total">0.00</span></p>
-            <button type="button" id="proceedToDeliveryBtn" class="btn-primary">Proceed to Delivery</button>
+        <div class="cart-total-summary">
+            <h3>Order Summary</h3>
+            <p>Subtotal: ETB <span id="cart-total">0.00</span></p>
+            {# Potentially add discount/shipping lines here later #}
+            <p class="grand-total">Grand Total: ETB <span id="cart-total-grand">0.00</span></p>
+            <p class="help-text">Shipping calculated at checkout based on address.</p>
         </div>
 
-        <!-- Delivery Info Section -->
-        <section id="deliveryInfoSection" class="hidden">
+        <section class="delivery-info-form">
             <h3>Delivery Information</h3>
             <form id="delivery-form" action="{{ url_for('checkout_delivery') }}" method="POST">
                 <div class="form-group">
                     <label for="delivery_phone">Phone Number:</label>
-                    <input type="tel" id="delivery_phone" name="delivery_phone" placeholder="e.g., 09xxxxxxxx" required
-                           value="{{ session.get('delivery_info', {}).get('phone', '') }}">
+                    <input type="tel" id="delivery_phone" name="delivery_phone"
+                           placeholder="Enter phone number for delivery" required
+                           value="{{ session.get('delivery_info', {}).get('phone', user_phone) }}"> {# Use user_phone from context if available #}
                 </div>
 
                 <div class="form-group">
                     <label for="delivery_address">Delivery Address:</label>
                     <textarea id="delivery_address" name="delivery_address" rows="4"
-                              placeholder="Street, City, Building, Floor, Apartment number..." required>{{ session.get('delivery_info', {}).get('address', '') }}</textarea>
+                              placeholder="Street, City, Building, Floor, Apartment number..." required>{{ session.get('delivery_info', {}).get('address', user_address) }}</textarea> {# Use user_address from context #}
                 </div>
 
                 <!-- Hidden inputs populated via JS -->
@@ -71,7 +68,7 @@
     </div>
 </div>
 
-<!-- Cart Hover Preview Template (optional enhancement) -->
+{# Cart Hover Preview Template (optional enhancement) - this seems unused based on script.js, can be removed or implemented #}
 <div id="cart-hover-preview" class="hidden">
     <h4>Cart Preview</h4>
     <ul id="cart-hover-items">
@@ -81,5 +78,4 @@
     <a href="{{ url_for('cart') }}" class="btn-secondary">View Cart</a>
 </div>
 
-<script src="{{ url_for('static', filename='Js/script.js') }}"></script>
-{% endblock %}
+{# script.js is already included in base.html, so no need to include it again #}

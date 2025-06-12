@@ -2,19 +2,22 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
-from datetime import datetime
+from datetime import datetime, timedelta # Import timedelta for session lifetime
 import json
-import secrets
-import functools
+import secrets # Still used, but its output will be ignored for SECRET_KEY
 
 # --- Flask Application Setup ---
 app = Flask(__name__)
 
-# IMPORTANT: Ensure this secret key is set and consistent.
-# It should be stable across server restarts in production, but random is fine for dev.
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16))
+# CRITICAL FIX: Use a fixed secret key for development.
+# DO NOT USE THIS HARDCODED KEY IN PRODUCTION! Use a proper environment variable.
+# For production, set FLASK_SECRET_KEY as an environment variable (e.g., export FLASK_SECRET_KEY="<your_long_random_string>")
+app.secret_key = 'your_strong_and_static_secret_key_here_for_dev_only_12345' # <-- IMPORTANT CHANGE!
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///baba_milk.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Configure session to be permanent and set its lifetime
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7) # Session lasts for 7 days
 
 db = SQLAlchemy(app)
 
@@ -39,7 +42,7 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     category = db.Column(db.String(50), nullable=False)
     price = db.Column(db.Float, nullable=False)
-    image_path = db.Column(db.String(200))
+    image_path = db.Column(db.String(200)) # This path will now store ONLY the filename (e.g., 'product1.png')
     description = db.Column(db.Text)
 
     def __repr__(self):
@@ -96,7 +99,7 @@ def set_flash_message(message, category='info'):
     if 'flash_messages' not in session:
         session['flash_messages'] = []
     session['flash_messages'].append({'message': message, 'category': category})
-    session.modified = True # Ensure session is marked as modified after list manipulation
+    session.modified = True # Crucial for mutable session objects
 
 # --- Context processor and before_request ---
 @app.context_processor
@@ -107,7 +110,7 @@ def inject_datetime():
 def load_logged_in_user():
     user_id = session.get('user_id')
     g.user = None
-    print(f"\n--- BEFORE REQUEST HOOK ---")
+    print(f"\n--- BEFORE REQUEST HOOK ({datetime.now().strftime('%H:%M:%S')}) ---")
     print(f"  Request Method: {request.method}, Path: {request.path}")
     print(f"  Session content (on entry): {dict(session)}") # See full session on every request
     print(f"  Attempting to load user for session user_id: {user_id}")
@@ -117,6 +120,10 @@ def load_logged_in_user():
             g.user = User.query.get(user_id)
             if g.user:
                 print(f"  SUCCESS: g.user loaded: {g.user.name} (ID: {g.user.id}, Is Admin: {g.user.is_admin})")
+                # Ensure user_name and is_admin are consistent with g.user
+                session['user_name'] = g.user.name
+                session['is_admin'] = g.user.is_admin
+                session.permanent = True # Ensure session remains permanent
             else:
                 print(f"  WARNING: No user found in DB for session user_id: {user_id}. Clearing session.")
                 # If user_id is in session but not in DB (e.g., DB reset), clear session
@@ -126,7 +133,7 @@ def load_logged_in_user():
                 session.modified = True # Mark session modified
         except Exception as e:
             # Catch any database errors during user lookup
-            print(f"  ERROR: Exception loading user for ID {user_id}: {e}. Clearing session.")
+            print(f"  ERROR: Exception loading user for ID {user_id}: {e}. Clearing session and rolling back.")
             session.pop('user_id', None)
             session.pop('user_name', None)
             session.pop('is_admin', None)
@@ -137,12 +144,13 @@ def load_logged_in_user():
     print(f"  Final g.user status (is not None): {g.user is not None}")
     print(f"--- END BEFORE REQUEST HOOK ---")
 
+
 # --- Route Decorators for Authentication and Authorization (ONLY for HTML routes) ---
 def login_required(f):
     """Decorator to check if a user is logged in. Redirects to account page if not."""
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
-        print(f"\n--- LOGIN REQUIRED DECORATOR INVOKED for {request.path} ---")
+        print(f"\n--- LOGIN REQUIRED DECORATOR INVOKED for {request.path} ({datetime.now().strftime('%H:%M:%S')}) ---")
         print(f"  Session user_id within decorator: {session.get('user_id')}")
         if 'user_id' not in session:
             print("  FAIL: User ID NOT found in session. Redirecting to /account.")
@@ -185,15 +193,27 @@ def account():
         if 'login_submit' in request.form:
             phone = request.form['phone']
             password = request.form['password']
-            user = User.query.filter_by(phone=phone).first()
+            
+            print(f"\n--- LOGIN ATTEMPT (Route Handler {datetime.now().strftime('%H:%M:%S')}) ---")
+            print(f"  Attempting login for phone: {phone}")
 
-            if user and check_password_hash(user.password, password):
+            user = User.query.filter_by(phone=phone).first()
+            
+            print(f"  User found by phone: {user}")
+            if user:
+                password_check_result = check_password_hash(user.password, password)
+                print(f"  Password check result: {password_check_result}")
+            else:
+                password_check_result = False # Ensure it's false if no user
+            
+            if user and password_check_result:
                 session['user_id'] = user.id
                 session['user_name'] = user.name
                 session['is_admin'] = user.is_admin
+                session.permanent = True # Make the session permanent
                 session.modified = True # Explicitly mark session as modified
 
-                print(f"\n--- LOGIN SUCCESS (Route Handler) ---")
+                print(f"\n--- LOGIN SUCCESS (Route Handler {datetime.now().strftime('%H:%M:%S')}) ---")
                 print(f"  User ID set in session: {session.get('user_id')}")
                 print(f"  Session content (after setting): {dict(session)}") # Print full session for debugging
                 print(f"--- END LOGIN SUCCESS ---")
@@ -201,6 +221,7 @@ def account():
                 set_flash_message('Login successful!', 'success')
                 return redirect(url_for('dashboard'))
             else:
+                print(f"  LOGIN FAILED: Invalid phone number or password for phone: {phone}")
                 set_flash_message('Invalid phone number or password', 'danger')
     return render_template('account.html')
 
@@ -213,20 +234,27 @@ def signup():
     password = request.form['psw']
     confirm_password = request.form['psw-repeat']
 
+    print(f"\n--- SIGNUP ATTEMPT (Route Handler {datetime.now().strftime('%H:%M:%S')}) ---")
+    print(f"  Attempting signup for phone: {phone}, email: {email}")
+
     if password != confirm_password:
         set_flash_message('Passwords do not match!', 'danger')
+        print("  SIGNUP FAILED: Passwords do not match.")
         return redirect(url_for('account'))
 
     if not phone.isdigit() or len(phone) < 9:
         set_flash_message('Please enter a valid phone number (digits only, at least 9 digits).', 'danger')
+        print("  SIGNUP FAILED: Invalid phone number format.")
         return redirect(url_for('account'))
 
     if User.query.filter_by(phone=phone).first():
         set_flash_message('Phone number already registered', 'danger')
+        print(f"  SIGNUP FAILED: Phone number {phone} already registered.")
         return redirect(url_for('account'))
 
     if email and User.query.filter_by(email=email).first():
         set_flash_message('Email already registered', 'danger')
+        print(f"  SIGNUP FAILED: Email {email} already registered.")
         return redirect(url_for('account'))
 
     hashed_password = generate_password_hash(password)
@@ -247,9 +275,10 @@ def signup():
         session['user_id'] = new_user.id
         session['user_name'] = new_user.name
         session['is_admin'] = new_user.is_admin
+        session.permanent = True # Make the session permanent
         session.modified = True # Explicitly mark session as modified
 
-        print(f"\n--- SIGNUP SUCCESS (Route Handler) ---")
+        print(f"\n--- SIGNUP SUCCESS (Route Handler {datetime.now().strftime('%H:%M:%S')}) ---")
         print(f"  User ID set in session: {session.get('user_id')}")
         print(f"  Session content: {dict(session)}") # Print full session for debugging
         print(f"--- END SIGNUP SUCCESS ---")
@@ -260,6 +289,7 @@ def signup():
         db.session.rollback()
         set_flash_message(f'An error occurred during registration: {e}', 'danger')
         app.logger.error(f"Signup error: {e}") # Log the specific error
+        print(f"  SIGNUP ERROR: {e}")
         return redirect(url_for('account'))
 
 @app.route('/dashboard')
@@ -308,7 +338,7 @@ def dashboard():
 
 @app.route('/logout')
 def logout():
-    print(f"\n--- LOGOUT ---")
+    print(f"\n--- LOGOUT ({datetime.now().strftime('%H:%M:%S')}) ---")
     print(f"  Before logout session: {dict(session)}")
     session.pop('user_id', None)
     session.pop('user_name', None)
@@ -371,7 +401,8 @@ def add_to_cart():
                 'id': product_id_str,
                 'name': product.name,
                 'price': float(product.price),
-                'image_path': product.image_path, # Store image_path here for rendering
+                # Store ONLY the filename in cart session data for image_path
+                'image_path': product.image_path, # <-- IMPORTANT CHANGE!
                 'quantity': 1
             }
 
@@ -379,7 +410,7 @@ def add_to_cart():
         session.modified = True # Mark session modified
 
         total_quantity = sum(item['quantity'] for item in cart.values())
-        print(f"  CART: Item {product_id_str} added. Total quantity: {total_quantity}")
+        print(f"  CART: Item {product_id_str} added. Total quantity: {total_quantity}. Session Cart: {dict(session.get('cart', {}))}")
         return jsonify({'success': True, 'message': f'{product.name} added to cart!', 'total_quantity': total_quantity})
 
     except Exception as e:
@@ -423,7 +454,7 @@ def update_cart_quantity():
         session.modified = True # Mark session modified
         
         total_quantity = sum(item['quantity'] for item in cart.values())
-        print(f"  CART: Item {product_id} quantity updated to {new_quantity}. Total quantity: {total_quantity}")
+        print(f"  CART: Item {product_id} quantity updated to {new_quantity}. Total quantity: {total_quantity}. Session Cart: {dict(session.get('cart', {}))}")
         return jsonify({'success': True, 'message': message, 'total_quantity': total_quantity})
 
     except Exception as e:
@@ -457,7 +488,7 @@ def remove_item_from_cart():
         session.modified = True # Mark session modified
 
         total_quantity = sum(item['quantity'] for item in cart.values())
-        print(f"  CART: Item {product_id} removed. Total quantity: {total_quantity}")
+        print(f"  CART: Item {product_id} removed. Total quantity: {total_quantity}. Session Cart: {dict(session.get('cart', {}))}")
         return jsonify({'success': True, 'message': f'{item_name} removed from cart.', 'total_quantity': total_quantity})
 
     except Exception as e:
@@ -487,12 +518,12 @@ def get_cart_items():
             'id': product_id_str, # Use string ID for consistency with JS
             'name': item_data['name'],
             'price': item_data['price'],
-            'image_path': item_data.get('image_path', 'images/default_product.png'), # Fallback image
+            'image_path': item_data.get('image_path', 'default_product.png'), # Fallback image name only
             'quantity': item_data['quantity']
         })
     
     total_quantity = sum(item['quantity'] for item in cart_data.values())
-    print(f"  CART: Fetching items. Total quantity: {total_quantity}. Items count: {len(items_list)}")
+    print(f"  CART: Fetching items. Total quantity: {total_quantity}. Items count: {len(items_list)}. Session Cart: {dict(session.get('cart', {}))}")
     return jsonify({'items': items_list, 'total_quantity': total_quantity})
 
 
@@ -724,12 +755,13 @@ if __name__ == '__main__':
 
             print("Populating products table...")
             for p_data in products_data:
+                # CRITICAL FIX: Store ONLY the filename in the database
                 image_name = f"product{p_data['image_suffix']}.png"
                 new_product = Product(
                     name=p_data['name'],
                     category=p_data['category'],
                     price=p_data['price'],
-                    image_path=os.path.join('images', image_name),
+                    image_path=image_name, # <-- IMPORTANT CHANGE HERE! Store just the filename.
                     description=p_data['description']
                 )
                 db.session.add(new_product)
@@ -751,7 +783,7 @@ if __name__ == '__main__':
                 db.session.commit()
                 print("Default admin user created (phone: 0911223344, pass: adminpass).")
         else:
-            print("Database 'baba_milk.db' already exists. Skipping creation and initial population.")
+            print("Database 'baba_milk.db' already exists. Checking for missing data...")
             # If DB exists but products/admin are missing, you might still want to add them
             with app.app_context():
                 if not Product.query.first():
@@ -762,7 +794,7 @@ if __name__ == '__main__':
                             name=p_data['name'],
                             category=p_data['category'],
                             price=p_data['price'],
-                            image_path=os.path.join('images', image_name),
+                            image_path=image_name, # <-- IMPORTANT CHANGE HERE! Store just the filename.
                             description=p_data['description']
                         )
                         db.session.add(new_product)

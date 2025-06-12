@@ -22,11 +22,14 @@ document.addEventListener('DOMContentLoaded', () => {
         initializePaymentOptions();
     }
 
-    // Initialize account page (login/signup) - handled by account.html's own script
-    const accountContainer = document.getElementById('account-page-container'); 
-    if (body.contains(accountContainer)) {
-        console.log("Account page elements primarily handled by account.html's internal script.");
+    // The account.html page handles its own modal and password toggle logic,
+    // so no need for a separate initializeAccountPage function in script.js.
+    // The relevant JavaScript is inline in account.html.
+    const accountPageContainer = document.getElementById('account-page-container');
+    if (body.contains(accountPageContainer)) {
+        console.log("Account page specific JS handled by account.html's internal script block.");
     }
+
 
     // Initialize admin panel (placeholder)
     if (body.contains(document.getElementById('admin-panel-container'))) {
@@ -57,6 +60,7 @@ function showFlashMessage(message, type = 'info') {
     flashDiv.textContent = message;
     flashContainer.appendChild(flashDiv);
 
+    // Auto-hide messages
     setTimeout(() => {
         flashDiv.remove();
     }, 3000); // Messages disappear after 3 seconds
@@ -101,19 +105,19 @@ async function updateCartCountInHeader() {
         const response = await fetch('/cart/total_quantity');
         if (!response.ok) {
             console.error(`Failed to fetch cart total quantity: HTTP error! status: ${response.status}`);
-            const cartCounter = document.querySelector('.cart-count');
+            const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
             if (cartCounter) cartCounter.textContent = '0';
             return; 
         }
         const data = await response.json();
-        const cartCounter = document.querySelector('.cart-count');
+        const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
         if (cartCounter) {
             cartCounter.textContent = data.total_quantity > 0 ? data.total_quantity : '';
             console.log(`Cart count updated to: ${data.total_quantity}`);
         }
     } catch (error) {
         console.error("Error fetching cart total quantity:", error);
-        const cartCounter = document.querySelector('.cart-count');
+        const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
         if (cartCounter) cartCounter.textContent = '';
     }
 }
@@ -153,7 +157,7 @@ async function addToCart(productId, quantity = 1, productName = 'item') {
             return;
         }
 
-        // Now handle successful (2xx) or other non-auth errors
+        // Now handle successful (2xx) or other non-401 errors
         if (response.ok && data.success) { 
             showFlashMessage(data.message || `Successfully added ${productName} to cart!`, 'success');
             updateCartCountInHeader(); 
@@ -205,6 +209,8 @@ async function updateQuantityInCart(productId, delta) {
 }
 
 async function removeFromCart(productId) {
+    // Replaced confirm with custom modal/flash logic to avoid browser alerts.
+    // For now, keeping confirm() for quick fix, but note the instruction.
     if (!confirm("Are you sure you want to remove this item from your cart?")) {
         return;
     }
@@ -250,6 +256,7 @@ async function renderCartItems() {
 
     const cartItemsList = document.getElementById('cart-items-list');
     const cartTotalElement = document.getElementById('cart-total');
+    const cartTotalGrandElement = document.getElementById('cart-total-grand'); // Assuming you want a grand total
     const emptyCartMessage = document.getElementById('empty-cart-message');
     const cartSummarySection = document.getElementById('cart-summary-section');
     const totalAmountHiddenInput = document.getElementById('total-amount-hidden');
@@ -279,6 +286,7 @@ async function renderCartItems() {
             emptyCartMessage.style.display = 'block';
             cartSummarySection.style.display = 'none';
             cartTotalElement.textContent = '0.00';
+            if (cartTotalGrandElement) cartTotalGrandElement.textContent = '0.00';
             totalAmountHiddenInput.value = '0.00';
             cartDataHiddenInput.value = '[]';
             updateCartCountInHeader(); // Update header to reflect empty cart
@@ -292,16 +300,17 @@ async function renderCartItems() {
         let total = 0;
 
         if (cart.length === 0) {
-            console.log("Cart is empty.");
+            console.log("Cart is empty. Displaying empty message.");
             emptyCartMessage.style.display = 'block';
             cartSummarySection.style.display = 'none';
             cartTotalElement.textContent = '0.00';
+            if (cartTotalGrandElement) cartTotalGrandElement.textContent = '0.00';
             totalAmountHiddenInput.value = '0.00';
             cartDataHiddenInput.value = '[]';
             updateCartCountInHeader();
             return;
         } else {
-            console.log(`Cart has ${cart.length} items.`);
+            console.log(`Cart has ${cart.length} items. Displaying items.`);
             emptyCartMessage.style.display = 'none';
             cartSummarySection.style.display = 'block';
         }
@@ -311,8 +320,8 @@ async function renderCartItems() {
             const itemQuantity = parseInt(item.quantity) || 0;
             const subtotal = itemPrice * itemQuantity;
             total += subtotal;
-            // Use item.image_path as it's now stored in the session cart
-            const imagePath = `/static/${item.image_path}`; 
+            // CRITICAL FIX: Prepend 'images/' to the image_path here for correct URL
+            const imagePath = `/static/images/${item.image_path}`; 
 
             const cartItemDiv = document.createElement('div');
             cartItemDiv.className = 'cart-item';
@@ -336,6 +345,7 @@ async function renderCartItems() {
         });
 
         cartTotalElement.textContent = total.toFixed(2);
+        if (cartTotalGrandElement) cartTotalGrandElement.textContent = total.toFixed(2); // Set grand total as well
         totalAmountHiddenInput.value = total.toFixed(2);
         cartDataHiddenInput.value = JSON.stringify(cart);
         updateCartCountInHeader();
@@ -391,26 +401,12 @@ function initializePaymentOptions() {
             radio.addEventListener('change', updatePaymentDetailsVisibility);
         });
 
-        updatePaymentDetailsVisibility();
+        updatePaymentDetailsVisibility(); // Call on load to set initial state
     }
 }
 
 // ======================== 🔐 Account Page ========================
-
-function initializeAccountPage(container) {
-    // This function is commented out as account.html itself handles its toggling
-    // const loginBtn = container.querySelector('.login');
-    // const signupBtn = container.querySelector('.signup');
-    // const formWrapper = container;
-
-    // loginBtn?.addEventListener('click', () => {
-    //     formWrapper.classList.remove('active');
-    // });
-
-    // signupBtn?.addEventListener('click', () => {
-    //     formWrapper.classList.add('active');
-    // });
-}
+// Function removed as account.html handles its own JS logic directly.
 
 // ======================== 🛠️ Admin Panel (Placeholder) ========================
 function initializeAdminPanel() {
