@@ -2,25 +2,27 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
-from datetime import datetime, timedelta # Import timedelta for session lifetime
+from datetime import datetime, timedelta
 import json
-import secrets 
-import functools # <--- CRITICAL FIX: ADDED THIS IMPORT
-
+import secrets
+import functools
+from flask_migrate import Migrate
 # --- Flask Application Setup ---
 app = Flask(__name__)
 
 # CRITICAL FIX: Use a fixed secret key for development.
-# DO NOT USE THIS HARDCODED KEY IN PRODUCTION! Use a proper environment variable.
-# For production, set FLASK_SECRET_KEY as an environment variable (e.g., export FLASK_SECRET_KEY="<your_long_random_string>")
-app.secret_key = 'your_strong_and_static_secret_key_here_for_dev_only_12345' # <-- IMPORTANT CHANGE!
+# DO NOT USE THIS HARDCODED KEY IN PRODUCTION!
+app.secret_key = 'your_strong_and_static_secret_key_here_for_dev_only_12345'
+
+# --- Configuration ---
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///baba_milk.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
-# Configure session to be permanent and set its lifetime
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7) # Session lasts for 7 days
-
+# --- Database Initialization ---
 db = SQLAlchemy(app)
+# --- Migration Setup ---
+migrate = Migrate(app, db)
 
 # --- Database Models ---
 
