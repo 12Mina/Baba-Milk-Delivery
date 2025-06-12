@@ -10,7 +10,8 @@ import functools
 # --- Flask Application Setup ---
 app = Flask(__name__)
 
-# IMPORTANT: Change this to a strong, random key in production!
+# IMPORTANT: Ensure this secret key is set and consistent.
+# It should be stable across server restarts in production, but random is fine for dev.
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///baba_milk.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -28,7 +29,6 @@ class User(db.Model):
     password = db.Column(db.String(200), nullable=False)
     address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    orders = db.relationship('Order', backref='user', lazy=True)
     is_admin = db.Column(db.Boolean, default=False)
 
     def __repr__(self):
@@ -96,7 +96,7 @@ def set_flash_message(message, category='info'):
     if 'flash_messages' not in session:
         session['flash_messages'] = []
     session['flash_messages'].append({'message': message, 'category': category})
-    session.modified = True
+    session.modified = True # Ensure session is marked as modified after list manipulation
 
 # --- Context processor and before_request ---
 @app.context_processor
@@ -107,17 +107,48 @@ def inject_datetime():
 def load_logged_in_user():
     user_id = session.get('user_id')
     g.user = None
+    print(f"\n--- BEFORE REQUEST HOOK ---")
+    print(f"  Request Method: {request.method}, Path: {request.path}")
+    print(f"  Session content (on entry): {dict(session)}") # See full session on every request
+    print(f"  Attempting to load user for session user_id: {user_id}")
     if user_id is not None:
-        g.user = User.query.get(user_id)
+        try:
+            # Query the user using the session ID
+            g.user = User.query.get(user_id)
+            if g.user:
+                print(f"  SUCCESS: g.user loaded: {g.user.name} (ID: {g.user.id}, Is Admin: {g.user.is_admin})")
+            else:
+                print(f"  WARNING: No user found in DB for session user_id: {user_id}. Clearing session.")
+                # If user_id is in session but not in DB (e.g., DB reset), clear session
+                session.pop('user_id', None)
+                session.pop('user_name', None)
+                session.pop('is_admin', None)
+                session.modified = True # Mark session modified
+        except Exception as e:
+            # Catch any database errors during user lookup
+            print(f"  ERROR: Exception loading user for ID {user_id}: {e}. Clearing session.")
+            session.pop('user_id', None)
+            session.pop('user_name', None)
+            session.pop('is_admin', None)
+            session.modified = True # Mark session modified
+            db.session.rollback() # Rollback any half-baked transactions if an error occurred
+    else:
+        print("  INFO: No user_id found in session.")
+    print(f"  Final g.user status (is not None): {g.user is not None}")
+    print(f"--- END BEFORE REQUEST HOOK ---")
 
 # --- Route Decorators for Authentication and Authorization (ONLY for HTML routes) ---
 def login_required(f):
     """Decorator to check if a user is logged in. Redirects to account page if not."""
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
+        print(f"\n--- LOGIN REQUIRED DECORATOR INVOKED for {request.path} ---")
+        print(f"  Session user_id within decorator: {session.get('user_id')}")
         if 'user_id' not in session:
+            print("  FAIL: User ID NOT found in session. Redirecting to /account.")
             set_flash_message('Please login to access this page.', 'warning')
             return redirect(url_for('account'))
+        print("  SUCCESS: User ID found in session. Proceeding with route function.")
         return f(*args, **kwargs)
     return decorated_function
 
@@ -127,7 +158,6 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session or not session.get('is_admin'):
             set_flash_message('Access denied. You are not authorized to view this page.', 'danger')
-            # For admin API endpoints, return JSON error (if needed for API calls)
             if request.accept_mimetypes.accept_json and \
                not request.accept_mimetypes.accept_html:
                 return jsonify(success=False, message="Authorization required (Admin access)."), 403
@@ -161,6 +191,13 @@ def account():
                 session['user_id'] = user.id
                 session['user_name'] = user.name
                 session['is_admin'] = user.is_admin
+                session.modified = True # Explicitly mark session as modified
+
+                print(f"\n--- LOGIN SUCCESS (Route Handler) ---")
+                print(f"  User ID set in session: {session.get('user_id')}")
+                print(f"  Session content (after setting): {dict(session)}") # Print full session for debugging
+                print(f"--- END LOGIN SUCCESS ---")
+
                 set_flash_message('Login successful!', 'success')
                 return redirect(url_for('dashboard'))
             else:
@@ -205,21 +242,30 @@ def signup():
 
     try:
         db.session.add(new_user)
-        db.session.commit()
+        db.session.commit() # Commit new user to get ID
+
         session['user_id'] = new_user.id
         session['user_name'] = new_user.name
         session['is_admin'] = new_user.is_admin
+        session.modified = True # Explicitly mark session as modified
+
+        print(f"\n--- SIGNUP SUCCESS (Route Handler) ---")
+        print(f"  User ID set in session: {session.get('user_id')}")
+        print(f"  Session content: {dict(session)}") # Print full session for debugging
+        print(f"--- END SIGNUP SUCCESS ---")
+
         set_flash_message('Account created successfully! You are now logged in.', 'success')
         return redirect(url_for('dashboard'))
     except Exception as e:
         db.session.rollback()
         set_flash_message(f'An error occurred during registration: {e}', 'danger')
+        app.logger.error(f"Signup error: {e}") # Log the specific error
         return redirect(url_for('account'))
 
 @app.route('/dashboard')
 @login_required # This is an HTML page, requires redirect if not logged in
 def dashboard():
-    user_id = session['user_id']
+    user_id = session['user_id'] # This should be safe because @login_required passed
     orders = Order.query.filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
 
     order_details = []
@@ -262,11 +308,16 @@ def dashboard():
 
 @app.route('/logout')
 def logout():
+    print(f"\n--- LOGOUT ---")
+    print(f"  Before logout session: {dict(session)}")
     session.pop('user_id', None)
     session.pop('user_name', None)
     session.pop('is_admin', None)
     session.pop('delivery_info', None)
     session.pop('cart', None)
+    session.modified = True # Explicitly mark session as modified
+    print(f"  After logout session: {dict(session)}")
+    print(f"--- END LOGOUT ---")
     set_flash_message('You have been logged out', 'info')
     return redirect(url_for('home'))
 
@@ -280,49 +331,67 @@ def cart():
         user_address = g.user.address
     return render_template('cart.html', user_phone=user_phone, user_address=user_address)
 
-# --- Cart Management API Endpoints (with JSON + session authentication) ---
-
-# ----------------- Cart Management -----------------
+# --- Cart Management API Endpoints (Explicit JSON Authentication) ---
+# Removed @login_required decorator from these API endpoints
+# as they handle auth check and JSON response internally.
 
 @app.route('/add_to_cart', methods=['POST'])
 def add_to_cart():
+    # Explicitly check for user_id for API calls. If not logged in, return JSON 401.
     if 'user_id' not in session:
-        return jsonify({'success': False, 'message': 'Authentication required.'}), 401
+        print(f"  AUTH FAIL: /add_to_cart - No user_id in session. Returning 401.")
+        return jsonify({
+            'success': False,
+            'error': 'Not logged in',
+            'message': 'Authentication required. Please log in to proceed.'
+        }), 401
 
     try:
         data = request.get_json()
-        product_id = str(data.get('product_id'))
-        name = data.get('name')
-        price = float(data.get('price'))
-        image = data.get('image')
+        product_id_str = str(data.get('product_id'))
+        
+        try:
+            product_id_int = int(product_id_str)
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid product ID format.'}), 400
 
-        cart = session.get('cart', {})
+        product = Product.query.get(product_id_int)
+        if not product:
+            return jsonify({'success': False, 'message': 'Product not found.'}), 404
 
-        if product_id in cart:
-            cart[product_id]['quantity'] += 1
+        if 'cart' not in session:
+            session['cart'] = {}
+
+        cart = session['cart']
+
+        if product_id_str in cart:
+            cart[product_id_str]['quantity'] += 1
         else:
-            cart[product_id] = {
-                'name': name,
-                'price': price,
-                'image': image,
+            cart[product_id_str] = {
+                'id': product_id_str,
+                'name': product.name,
+                'price': float(product.price),
+                'image_path': product.image_path, # Store image_path here for rendering
                 'quantity': 1
             }
 
         session['cart'] = cart
-        session.modified = True
+        session.modified = True # Mark session modified
 
         total_quantity = sum(item['quantity'] for item in cart.values())
-
-        return jsonify({'success': True, 'message': f'{name} added to cart!', 'total_quantity': total_quantity})
+        print(f"  CART: Item {product_id_str} added. Total quantity: {total_quantity}")
+        return jsonify({'success': True, 'message': f'{product.name} added to cart!', 'total_quantity': total_quantity})
 
     except Exception as e:
         app.logger.error(f"Error adding to cart: {e}")
-        return jsonify({'success': False, 'message': 'Failed to add item to cart.'}), 500
+        db.session.rollback() # Ensure rollback on error
+        return jsonify({'success': False, 'message': 'An error occurred while adding to cart.'}), 500
 
 @app.route('/cart/update_quantity', methods=['POST'])
 def update_cart_quantity():
-    """Update quantity of an item in the cart."""
+    # Explicitly check for user_id for API calls. If not logged in, return JSON 401.
     if 'user_id' not in session:
+        print(f"  AUTH FAIL: /cart/update_quantity - No user_id in session. Returning 401.")
         return jsonify({
             'success': False,
             'error': 'Not logged in',
@@ -351,27 +420,27 @@ def update_cart_quantity():
             message = f"{cart[product_id]['name']} quantity updated to {new_quantity}."
 
         session['cart'] = cart
-        session.modified = True
-
+        session.modified = True # Mark session modified
+        
         total_quantity = sum(item['quantity'] for item in cart.values())
+        print(f"  CART: Item {product_id} quantity updated to {new_quantity}. Total quantity: {total_quantity}")
         return jsonify({'success': True, 'message': message, 'total_quantity': total_quantity})
 
     except Exception as e:
         app.logger.error(f"Error updating cart quantity: {e}")
+        db.session.rollback() # Ensure rollback on error
         return jsonify({'success': False, 'message': 'An error occurred while updating quantity.'}), 500
 
-@app.route('/cart/items')
-def get_cart_items():
-    """Return the current items in the user's cart."""
+@app.route('/cart/remove_item', methods=['POST'])
+def remove_item_from_cart():
+    # Explicitly check for user_id for API calls. If not logged in, return JSON 401.
     if 'user_id' not in session:
+        print(f"  AUTH FAIL: /cart/remove_item - No user_id in session. Returning 401.")
         return jsonify({
             'success': False,
             'error': 'Not logged in',
-            'message': 'Authentication required. Please log in to view cart.'
+            'message': 'Authentication required. Please log in to proceed.'
         }), 401
-
-    cart = session.get('cart', {})  # Default to empty cart
-    return jsonify({'items': list(cart.values())})
 
     try:
         data = request.get_json()
@@ -385,31 +454,62 @@ def get_cart_items():
         item_name = cart[product_id]['name']
         del cart[product_id]
         session['cart'] = cart
-        session.modified = True
+        session.modified = True # Mark session modified
 
         total_quantity = sum(item['quantity'] for item in cart.values())
+        print(f"  CART: Item {product_id} removed. Total quantity: {total_quantity}")
         return jsonify({'success': True, 'message': f'{item_name} removed from cart.', 'total_quantity': total_quantity})
 
     except Exception as e:
         app.logger.error(f"Error removing item from cart: {e}")
+        db.session.rollback() # Ensure rollback on error
         return jsonify({'success': False, 'message': 'An error occurred while removing item.'}), 500
+
+@app.route('/cart/items')
+def get_cart_items():
+    # Explicitly check for user_id for API calls. If not logged in, return JSON 401.
+    if 'user_id' not in session:
+        print(f"  AUTH FAIL: /cart/items - No user_id in session. Returning 401.")
+        return jsonify({
+            'items': [],
+            'total_quantity': 0,
+            'error': 'Not logged in',
+            'message': 'Authentication required to view cart.'
+        }), 401 # Return 401 for not logged in, consistent with other API errors
+
+    cart_data = session.get('cart', {})
+    items_list = []
+
+    # Iterate through cart items and build the list, ensuring 'image_path' is included
+    for product_id_str, item_data in cart_data.items():
+        # Use item_data.get('image_path') as it should have been stored when added to cart
+        items_list.append({
+            'id': product_id_str, # Use string ID for consistency with JS
+            'name': item_data['name'],
+            'price': item_data['price'],
+            'image_path': item_data.get('image_path', 'images/default_product.png'), # Fallback image
+            'quantity': item_data['quantity']
+        })
+    
+    total_quantity = sum(item['quantity'] for item in cart_data.values())
+    print(f"  CART: Fetching items. Total quantity: {total_quantity}. Items count: {len(items_list)}")
+    return jsonify({'items': items_list, 'total_quantity': total_quantity})
 
 
 @app.route('/cart/total_quantity')
 def get_cart_total_quantity():
-    """Return total number of items in the cart (visible in navbar/cart icon)."""
+    # This endpoint is designed to be accessible without login to show '0' in header
+    # No authentication check here, as it's meant to work anonymously.
     total_quantity = 0
     if 'user_id' in session:
         total_quantity = sum(item['quantity'] for item in session.get('cart', {}).values())
+    print(f"  CART: Fetching total quantity. Current: {total_quantity}")
     return jsonify({'total_quantity': total_quantity})
 
 
-# ----------------- Checkout & Payment -----------------
-
 @app.route('/checkout_delivery', methods=['POST'])
-@login_required  # this decorator must be implemented elsewhere
+@login_required # This is an HTML form submission, so the decorator handles redirection
 def checkout_delivery():
-    """Handle delivery information form submission."""
     delivery_phone = request.form.get('delivery_phone')
     delivery_address = request.form.get('delivery_address')
 
@@ -425,19 +525,17 @@ def checkout_delivery():
         'phone': delivery_phone,
         'address': delivery_address
     }
-    session.modified = True
+    session.modified = True # Mark session modified
 
     return redirect(url_for('payment'))
 
-
 @app.route('/payment')
-@login_required
+@login_required # This is an HTML page, requires redirect if not logged in
 def payment():
-    """Render the payment page with cart and delivery info."""
     if 'delivery_info' not in session:
         set_flash_message('Please provide delivery details first.', 'warning')
         return redirect(url_for('cart'))
-
+    
     cart_items = session.get('cart', {}).values()
     total_amount = sum(item['price'] * item['quantity'] for item in cart_items)
 
@@ -522,7 +620,7 @@ def finalize_order():
         status=status
     )
     db.session.add(new_order)
-    db.session.flush()
+    db.session.flush() # Flush to get new_order.id before commit
 
     for item_data in order_items_to_add:
         order_item = OrderItem(
@@ -538,10 +636,12 @@ def finalize_order():
         set_flash_message('Order placed successfully! Please complete your payment if using mobile money. Your cart has been cleared.', 'success')
         session.pop('delivery_info', None)
         session.pop('cart', None)
+        session.modified = True # Mark session modified
         return redirect(url_for('dashboard'))
     except Exception as e:
         db.session.rollback()
         set_flash_message(f'An error occurred while placing your order: {e}', 'danger')
+        app.logger.error(f"Order finalization error: {e}") # Log the specific error
         return redirect(url_for('cart'))
 
 @app.route('/admin')
@@ -608,6 +708,7 @@ def update_order_status():
         except Exception as e:
             db.session.rollback()
             set_flash_message(f'Error updating order status: {e}', 'danger')
+            app.logger.error(f"Order status update error: {e}") # Log the specific error
     else:
         set_flash_message('Order not found', 'danger')
 
@@ -616,9 +717,11 @@ def update_order_status():
 # --- Application Initialization ---
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
+        # Check if database exists, if not create and populate
+        if not os.path.exists('baba_milk.db'):
+            print("Database 'baba_milk.db' not found. Creating and populating...")
+            db.create_all()
 
-        if not Product.query.first():
             print("Populating products table...")
             for p_data in products_data:
                 image_name = f"product{p_data['image_suffix']}.png"
@@ -632,22 +735,54 @@ if __name__ == '__main__':
                 db.session.add(new_product)
             db.session.commit()
             print("Products populated.")
-        else:
-            print("Products already exist in the database.")
             
-        if not User.query.filter_by(is_admin=True).first():
-            print("Creating a default admin user...")
-            admin_user = User(
-                name="Admin",
-                lastname="User",
-                phone="0911223344",
-                email="admin@example.com",
-                password=generate_password_hash("adminpass"),
-                is_admin=True,
-                address="Admin Office"
-            )
-            db.session.add(admin_user)
-            db.session.commit()
-            print("Default admin user created (phone: 0911223344, pass: adminpass).")
+            if not User.query.filter_by(is_admin=True).first():
+                print("Creating a default admin user...")
+                admin_user = User(
+                    name="Admin",
+                    lastname="User",
+                    phone="0911223344",
+                    email="admin@example.com",
+                    password=generate_password_hash("adminpass"),
+                    is_admin=True,
+                    address="Admin Office"
+                )
+                db.session.add(admin_user)
+                db.session.commit()
+                print("Default admin user created (phone: 0911223344, pass: adminpass).")
+        else:
+            print("Database 'baba_milk.db' already exists. Skipping creation and initial population.")
+            # If DB exists but products/admin are missing, you might still want to add them
+            with app.app_context():
+                if not Product.query.first():
+                    print("Products missing. Populating...")
+                    for p_data in products_data:
+                        image_name = f"product{p_data['image_suffix']}.png"
+                        new_product = Product(
+                            name=p_data['name'],
+                            category=p_data['category'],
+                            price=p_data['price'],
+                            image_path=os.path.join('images', image_name),
+                            description=p_data['description']
+                        )
+                        db.session.add(new_product)
+                    db.session.commit()
+                    print("Products populated.")
+
+                if not User.query.filter_by(is_admin=True).first():
+                    print("Admin user missing. Creating...")
+                    admin_user = User(
+                        name="Admin",
+                        lastname="User",
+                        phone="0911223344",
+                        email="admin@example.com",
+                        password=generate_password_hash("adminpass"),
+                        is_admin=True,
+                        address="Admin Office"
+                    )
+                    db.session.add(admin_user)
+                    db.session.commit()
+                    print("Admin user created.")
+
 
     app.run(debug=True)
