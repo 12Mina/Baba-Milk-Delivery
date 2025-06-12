@@ -37,11 +37,13 @@ header {
 }
 
 .navbar .logo img {
-    height: 50px; /* Adjust as needed */
-    vertical-align: middle;
-    border-radius: 50%; /* <--- CRITICAL FIX: Make logo circular */
+    height: 50px;
+    width: 50px;              /* Must be equal to height */
+    border-radius: 50%;       /* Makes it a perfect circle */
+    object-fit: cover;        /* Ensures the image fills the circle */
+    overflow: hidden;         /* Optional, ensures nothing spills */
+    background-color: white;  /* Optional, in case your PNG has transparency */
 }
-
 .nav-links {
     list-style: none;
     margin: 0;
@@ -154,7 +156,8 @@ header {
 
 /* --- Hero Section --- */
 .hero {
-    background: url('/static/images/background.png') no-repeat center center/cover;
+    background: url('/static/images/background.png') no-repeat center center;
+    background-size: 100% 100%; /* Stretch to fill both width and height */
     color: #fff;
     text-align: center;
     padding: 100px 20px;
@@ -162,9 +165,9 @@ header {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 60vh; /* Make it more prominent */
-    border-radius: 12px; /* Rounded corners for the section */
-    margin: 20px; /* Margin around the section */
+    height: 60vh;
+    border-radius: 12px;
+    margin: 20px;
 }
 
 .hero::before {
@@ -334,13 +337,13 @@ header {
     color: #fff;
     border: none;
     padding: 12px 25px;
-    border-radius: 8px; /* Rounded corners */
+    border-radius: 8px;
     cursor: pointer;
     font-size: 1em;
     font-weight: bold;
     transition: background-color 0.3s ease, transform 0.1s ease, box-shadow 0.3s ease;
-    text-decoration: none; /* For anchor tags styled as buttons */
-    display: inline-block; /* For anchor tags styled as buttons */
+    text-decoration: none;
+    display: inline-block;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -644,7 +647,7 @@ header {
     border: 1px solid #ccc;
     border-radius: 8px;
     font-size: 1em;
-    box-sizing: border-box; /* Include padding in width */
+    box-sizing: border-box;
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
