@@ -321,6 +321,7 @@ async function renderCartItems() {
             const subtotal = itemPrice * itemQuantity;
             total += subtotal;
             // CRITICAL FIX: Prepend 'images/' to the image_path here for correct URL
+            // This line is already correct, assuming item.image_path is just the filename.
             const imagePath = `/static/images/${item.image_path}`; 
 
             const cartItemDiv = document.createElement('div');
