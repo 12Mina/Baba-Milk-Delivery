@@ -8,15 +8,19 @@ import secrets
 import functools
 from flask_migrate import Migrate
 
-# --- Flask Application Setup ---
+# --- Flask App Setup ---
 app = Flask(__name__)
 
-# CRITICAL FIX: Use a fixed secret key for development.
-# DO NOT USE THIS HARDCODED KEY IN PRODUCTION!
-app.secret_key = 'your_strong_and_static_secret_key_here_for_dev_only_12345'
+# Secret key (you can set a secure one in production via environment variable)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key_baba_milk")
 
-# --- Configuration ---
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///baba_milk.db'
+# --- Database Configuration ---
+# Use PostgreSQL if DATABASE_URL is set (Render), fallback to SQLite for local
+db_url = os.environ.get("DATABASE_URL")
+if db_url and db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url or 'sqlite:///baba_milk.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
@@ -47,7 +51,7 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     category = db.Column(db.String(50), nullable=False)
     price = db.Column(db.Float, nullable=False)
-    image_path = db.Column(db.String(200))  # Just the filename
+    image_path = db.Column(db.String(200))  # File path or filename
     description = db.Column(db.Text)
 
     def __repr__(self):
@@ -79,8 +83,9 @@ class OrderItem(db.Model):
     def __repr__(self):
         return f"<OrderItem {self.id} for Order {self.order_id}>"
 
-# ✅ DEBUG: Check registered tables
+# ✅ DEBUG: See loaded tables in terminal
 print("✅ Registered Tables:", db.metadata.tables.keys())
+
 
 # --- Predefined Products Data ---
 products_data = [
