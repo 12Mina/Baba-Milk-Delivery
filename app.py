@@ -15,16 +15,16 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key_baba_milk")
 
 # --- Database Configuration ---
-# Use PostgreSQL if DATABASE_URL is set (Render), fallback to SQLite for local
 db_url = os.environ.get("DATABASE_URL")
 if db_url and db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://")
+else:
+    db_url = "sqlite:///baba_milk.db"  # force SQLite if not PostgreSQL
 
-app.config['SQLALCHEMY_DATABASE_URI'] = db_url or 'sqlite:///baba_milk.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
-# --- Database Initialization ---
 db = SQLAlchemy(app)
 
 # --- Migration Setup ---
