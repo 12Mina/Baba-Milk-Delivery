@@ -11,15 +11,10 @@ venv/
 ENV/
 env/
 
-# Ignore everything in instance folder...
-instance/
-
-# ...but NOT baba_milk.db inside it!
-!instance/baba_milk.db
 
 # Still ignore all other .db files
 *.db
-*.sqlite3
+!baba_milk.db
 
 
 # Flask secret files
