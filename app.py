@@ -16,7 +16,7 @@ app = Flask(__name__)
 app.secret_key = 'your_strong_and_static_secret_key_here_for_dev_only_12345'
 
 # --- Configuration ---
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///baba_milk.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql:///baba_milk.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
