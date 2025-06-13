@@ -7,6 +7,7 @@ import json
 import secrets
 import functools
 from flask_migrate import Migrate
+
 # --- Flask Application Setup ---
 app = Flask(__name__)
 
@@ -21,6 +22,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
 # --- Database Initialization ---
 db = SQLAlchemy(app)
+
 # --- Migration Setup ---
 migrate = Migrate(app, db)
 
@@ -45,7 +47,7 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     category = db.Column(db.String(50), nullable=False)
     price = db.Column(db.Float, nullable=False)
-    image_path = db.Column(db.String(200)) # This path will now store ONLY the filename (e.g., 'product1.png')
+    image_path = db.Column(db.String(200))  # Just the filename
     description = db.Column(db.Text)
 
     def __repr__(self):
@@ -76,6 +78,9 @@ class OrderItem(db.Model):
 
     def __repr__(self):
         return f"<OrderItem {self.id} for Order {self.order_id}>"
+
+# ✅ DEBUG: Check registered tables
+print("✅ Registered Tables:", db.metadata.tables.keys())
 
 # --- Predefined Products Data ---
 products_data = [
