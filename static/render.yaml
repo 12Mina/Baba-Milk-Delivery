@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: baba-milk-delivery
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: waitress-serve --port=$PORT run_production:app
-    envVars:
-      - key: FLASK_ENV
-        value: production
