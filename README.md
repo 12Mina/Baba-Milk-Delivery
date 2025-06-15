@@ -16,7 +16,7 @@ Baba-Milk-Delivery is a web application designed to streamline the milk delivery
 
 * **Frontend:** HTML, CSS, JavaScript
 * **Backend:** Python with Flask
-* **Database:** [Specify your database, e.g., SQLite, PostgreSQL, MongoDB]
+* **Database:** SQLite, PostgreSQL
 
 ## Setup and Installation
 
@@ -81,9 +81,13 @@ Baba-Milk-Delivery/
 ├── api/
 │   └── app.py              # Main Flask application file
 │   └── templates/          # HTML templates
-│       └── index.html
-│       └── login.html
-│       └── ...
+│       └── home.html
+│       └── cart.html
+│       └── account.html
+|       └── dashbord.html
+|       └── paytame.html
+|        └── base.html
+|       └── admin.html
 │   └── static/             # CSS, JavaScript, images
 │       └── css/
 │       └── js/
