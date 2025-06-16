@@ -36,17 +36,18 @@
                         {% if session.get('user_id') %}
                         <a href="{{ url_for('logout') }}">Logout ({{ session.get('user_name', 'User') }})</a>
                         {% else %}
-                        <a href="{{ url_for('account') }}">Login / Signup</a>
+                        <a href="{{ url_for('account') }}">Account</a> {# Changed from Login / Signup to Account #}
                         {% endif %}
                     </li>
                 </ul>
             </nav>
+            <!-- Hamburger Menu Toggle Button -->
             <button class="menu-toggle" aria-label="Toggle navigation">
                 <span class="bar"></span>
                 <span class="bar"></span>
                 <span class="bar"></span>
             </button>
-            </div>
+        </div>
     </header>
 
     {# Flash Messages Container (Client-side JS will populate this) #}
@@ -63,12 +64,12 @@
 
     <footer>
         <div class="container">
-            <p>&copy; {{ datetime.now().year }} Baba Milk App. All rights reserved.</p>
+            <p>&copy; {{ datetime.now().year }} Baba Milk App. All rights reserved.</p> {# datetime=datetime passed in routes #}
             <p>Contact us: info@babamilk.com | +251 964 66 0512</p>
         </div>
     </footer>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
-    {% block body_extra %}{% endblock %} {# For page-specific scripts #}
+    {% block body_extra %}{% endblock %}
 </body>
 </html>

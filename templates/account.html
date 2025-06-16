@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Login / Signup with OTP{% endblock %}
+{% block title %}Account - OTP Login/Signup{% endblock %}
 
 {% block content %}
 <div class="auth-container" id="account-page-container">
     <div id="otp-entry-container">
-        <h2>Enter Your Details</h2>
+        <h2>Access Your Account</h2>
         <form id="send-otp-form" method="POST" action="{{ url_for('send_otp') }}">
             <div class="form-group">
-                <label for="name"><b>Full Name (for Signup)</b></label>
+                <label for="name"><b>Full Name (for new accounts)</b></label>
                 <input type="text" placeholder="Enter Full Name" name="name" id="name" autocomplete="name">
-                <small class="help-text">Only required if you are signing up for a new account.</small>
+                <small class="help-text">Only required if you are signing up for a new account. Can be left empty for login.</small>
             </div>
             
             <div class="form-group">
@@ -19,8 +19,7 @@
                 <small class="help-text">Your 10-digit phone number (e.g., 0912345678).</small>
             </div>
 
-            <button type="submit" name="action" value="login" class="btn-primary">Login with OTP</button>
-            <button type="submit" name="action" value="signup" class="btn-secondary">Sign Up with OTP</button>
+            <button type="submit" class="btn-primary">Submit</button> {# Single "Submit" button #}
         </form>
     </div>
 </div>
@@ -28,8 +27,7 @@
 
 {% block body_extra %}
 <script>
-    // This script block is specific to account.html if needed for client-side validation
-    // For this OTP flow, most logic is now handled by Flask's server-side redirect.
-    // The pattern attribute on the phone input provides basic client-side validation.
+    // No specific JS for modal/password toggle on this page anymore.
+    // The form submits directly to Flask for OTP initiation.
 </script>
 {% endblock %}
