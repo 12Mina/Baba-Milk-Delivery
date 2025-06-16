@@ -340,7 +340,7 @@ def verify_otp():
             new_user = User(
                 name=name,
                 phone=phone,
-                password=generate_password_hash(otp)
+                password=generate_password_hash(stored_otp)
             )
             db.session.add(new_user)
             db.session.commit()
