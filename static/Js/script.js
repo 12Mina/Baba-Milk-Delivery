@@ -30,303 +30,358 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Account page specific JS handled by account.html's internal script block.");
     }
 
+
     // Initialize admin panel (placeholder)
     if (body.contains(document.getElementById('admin-panel-container'))) {
         initializeAdminPanel();
     }
 
-    // NEW: Initialize Mobile Navigation Toggle
-    initializeMobileNavToggle();
-    // ----------------------------------------
+    // Track Button placeholder - Ensure this is correctly linked in your HTML
+    const trackButton = document.querySelector('.track-button');
+    if (trackButton) {
+        trackButton.addEventListener('click', (e) => {
+            e.preventDefault(); // Prevent default link behavior if it's just a placeholder
+            showFlashMessage('📦 Tracking feature is coming soon!', 'info');
+        });
+    }
 });
 
+// ======================== ✨ Flash Message Utilities ========================
 
-// ======================== Flash Messages ========================
-function showFlashMessage(message, category) {
-    const container = document.getElementById('flash-message-container');
-    if (container) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `flash-message ${category}`;
-        messageDiv.innerHTML = `${message}<span class="close-btn">&times;</span>`;
-        
-        container.appendChild(messageDiv);
-
-        // Add close functionality
-        messageDiv.querySelector('.close-btn').addEventListener('click', () => {
-            messageDiv.remove();
-        });
-
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            messageDiv.remove();
-        }, 5000);
+// This function is for client-side triggered flash messages
+function showFlashMessage(message, type = 'info') {
+    const flashContainer = document.getElementById('flash-message-container');
+    if (!flashContainer) {
+        console.error("Flash message container not found!");
+        return;
     }
+    const flashDiv = document.createElement('div');
+    flashDiv.className = `alert alert-${type}`;
+    flashDiv.textContent = message;
+    flashContainer.appendChild(flashDiv);
+
+    // Auto-hide messages
+    setTimeout(() => {
+        flashDiv.remove();
+    }, 3000); // Messages disappear after 3 seconds
 }
 
+// This function handles Flask's server-side flashed messages
 function displayFlaskFlashMessages() {
-    const flashDataScript = document.getElementById('flash-messages-data');
-    if (flashDataScript) {
+    const flashMessagesDataElement = document.getElementById('flash-messages-data');
+    if (flashMessagesDataElement) {
         try {
-            const messages = JSON.parse(flashDataScript.textContent);
-            messages.forEach(([category, message]) => {
-                showFlashMessage(message, category);
-            });
-        } catch (e) {
-            console.error("Error parsing flash messages:", e);
-        }
-    }
-}
+            // Parse the JSON string from the hidden script tag
+            const flashedMessages = JSON.parse(flashMessagesDataElement.textContent || '[]');
+            const flashMessageContainer = document.getElementById('flash-message-container');
 
-// ======================== Cart Management ========================
+            if (flashedMessages.length > 0 && flashMessageContainer) {
+                flashedMessages.forEach(msg => {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = `alert alert-${msg.category}`; // Use Flask's category directly
+                    alertDiv.textContent = msg.message;
+                    flashMessageContainer.appendChild(alertDiv);
 
-// Function to update cart count displayed in the header
-async function updateCartCountInHeader() {
-    const cartCountSpan = document.getElementById('cart-count');
-    if (cartCountSpan) {
-        try {
-            const response = await fetch('/get_cart_count');
-            if (response.ok) {
-                const data = await response.json();
-                cartCountSpan.textContent = data.cart_count;
-            } else {
-                console.error('Failed to fetch cart count.');
+                    // Auto-hide messages
+                    setTimeout(() => {
+                        alertDiv.remove();
+                    }, 4000); // Flask messages disappear after 4 seconds
+                });
+                // Clear the content of the script tag so messages aren't re-displayed on soft navigations
+                flashMessagesDataElement.textContent = '[]'; 
             }
-        } catch (error) {
-            console.error('Error fetching cart count:', error);
+        } catch (e) {
+            console.error("Error parsing Flask flash messages:", e);
         }
     }
 }
 
-// Initialize "Add to Cart" buttons
-function initializeAddToCartButtons() {
-    const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
-    addToCartButtons.forEach(button => {
-        button.addEventListener('click', async (event) => {
-            const productId = event.target.dataset.productId;
-            const productName = event.target.dataset.name;
-            const productPrice = event.target.dataset.price; // Get price from data-attribute
-            const quantity = 1; // Default quantity for initial add
 
-            await addToCart(productId, quantity, productName, productPrice); // Pass price
+// ======================== 🛒 Cart Functions (Core Logic) ========================
+
+async function updateCartCountInHeader() {
+    console.log("Attempting to update cart count in header...");
+    try {
+        const response = await fetch('/cart/total_quantity');
+        if (!response.ok) {
+            console.error(`Failed to fetch cart total quantity: HTTP error! status: ${response.status}`);
+            const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
+            if (cartCounter) cartCounter.textContent = '0';
+            return; 
+        }
+        const data = await response.json();
+        const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
+        if (cartCounter) {
+            cartCounter.textContent = data.total_quantity > 0 ? data.total_quantity : '';
+            console.log(`Cart count updated to: ${data.total_quantity}`);
+        }
+    } catch (error) {
+        console.error("Error fetching cart total quantity:", error);
+        const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
+        if (cartCounter) cartCounter.textContent = '';
+    }
+}
+
+function initializeAddToCartButtons() {
+    const buttons = document.querySelectorAll('.add-to-cart-btn');
+    buttons.forEach(button => {
+        button.addEventListener('click', () => {
+            const productId = button.getAttribute('data-product-id');
+            const productName = button.closest('.product-card')?.querySelector('h3')?.textContent || 'Unknown Product';
+            addToCart(productId, 1, productName); // Pass quantity as 1 by default
         });
     });
 }
 
-
-async function addToCart(productId, quantity, productName, productPrice) { // Accept productPrice
+async function addToCart(productId, quantity = 1, productName = 'item') {
+    console.log(`🧺 Attempting to add product ${productId} (${productName}) to cart...`);
     try {
         const response = await fetch('/add_to_cart', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest' // Crucial for Flask to identify AJAX
             },
             body: JSON.stringify({ product_id: productId, quantity: quantity })
         });
 
+        // Parse JSON immediately, as Flask now guarantees JSON even for auth errors
         const data = await response.json();
+        console.log("addToCart API response:", { status: response.status, data: data });
 
+
+        // Check for 401 status OR specific error message from Flask
         if (response.status === 401 || data.error === 'Not logged in') {
             showFlashMessage(data.message || 'Please log in to add items to your cart.', 'warning');
             setTimeout(() => window.location.href = '/account', 1500); // Redirect to login
             return;
         }
 
-        if (response.ok && data.success) {
-            showFlashMessage(data.message, 'success');
-            updateCartCountInHeader(); // Update the cart count in the header
-            
-            // If on cart page, re-render items
+        // Now handle successful (2xx) or other non-401 errors
+        if (response.ok && data.success) { 
+            showFlashMessage(data.message || `Successfully added ${productName} to cart!`, 'success');
+            updateCartCountInHeader(); 
             if (document.body.contains(document.getElementById('cart-page-container'))) {
-                renderCartItems();
+                renderCartItems(); // Re-render cart if on the cart page
             }
-
         } else {
-            showFlashMessage(data.message || 'Failed to add item to cart.', 'error');
+            // Server returned a 2xx status but 'success: false' or other non-401 error
+            showFlashMessage(data.message || data.error || 'Failed to add item to cart.', 'danger');
         }
     } catch (error) {
-        console.error('Error adding item to cart:', error);
-        showFlashMessage('Error: Could not add item to cart. Check your connection.', 'error');
+        console.error("Network or parsing error adding to cart:", error);
+        showFlashMessage(`Error: Could not add ${productName} to cart. Check your connection.`, 'danger');
     }
 }
 
-
-// Function to render cart items on the cart page
-async function renderCartItems() {
-    const cartItemsList = document.getElementById('cart-items-list');
-    const emptyCartMessage = document.getElementById('empty-cart-message');
-    const cartSummarySection = document.getElementById('cart-summary-section');
-    const subtotalSpan = document.getElementById('cart-subtotal');
-    const totalAmountSpan = document.getElementById('cart-total');
-    const totalAmountHidden = document.getElementById('total-amount-hidden');
-    const cartDataHidden = document.getElementById('cart-data-hidden');
-
-
-    if (!cartItemsList || !emptyCartMessage || !cartSummarySection || !subtotalSpan || !totalAmountSpan || !totalAmountHidden || !cartDataHidden) {
-        // Not on the cart page, or elements are missing.
-        return;
-    }
-
+async function updateQuantityInCart(productId, delta) {
+    console.log(`Updating quantity for product ${productId} by ${delta}...`);
     try {
-        const response = await fetch('/get_cart_items');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-
-        if (data.cart_items && data.cart_items.length > 0) {
-            cartItemsList.innerHTML = ''; // Clear existing items
-            let subtotal = 0;
-            const cartItemsData = []; // To store data for hidden input
-
-            data.cart_items.forEach(item => {
-                const itemTotal = item.price * item.quantity;
-                subtotal += itemTotal;
-
-                const cartItemDiv = document.createElement('div');
-                cartItemDiv.className = 'cart-item';
-                cartItemDiv.innerHTML = `
-                    <img src="${item.image_url}" alt="${item.name}">
-                    <div class="item-details">
-                        <h3>${item.name}</h3>
-                        <p class="item-price">ETB ${item.price.toFixed(2)}</p>
-                    </div>
-                    <div class="item-quantity-controls">
-                        <button class="quantity-minus" data-product-id="${item.id}">-</button>
-                        <input type="number" class="item-quantity-input" value="${item.quantity}" min="1" data-product-id="${item.id}">
-                        <button class="quantity-plus" data-product-id="${item.id}">+</button>
-                    </div>
-                    <p class="item-total">ETB ${itemTotal.toFixed(2)}</p>
-                    <button class="remove-item-btn" data-product-id="${item.id}"><i class="fas fa-trash-alt"></i></button>
-                `;
-                cartItemsList.appendChild(cartItemDiv);
-
-                cartItemsData.push({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity
-                });
-            });
-
-            subtotalSpan.textContent = subtotal.toFixed(2);
-            totalAmountSpan.textContent = subtotal.toFixed(2); // Assuming no delivery fee/taxes here
-            totalAmountHidden.value = subtotal.toFixed(2); // Set hidden total amount
-            cartDataHidden.value = JSON.stringify(cartItemsData); // Set hidden cart data
-
-            emptyCartMessage.style.display = 'none';
-            cartSummarySection.style.display = 'block';
-        } else {
-            emptyCartMessage.style.display = 'block';
-            cartSummarySection.style.display = 'none';
-        }
-    } catch (error) {
-        console.error('Error rendering cart items:', error);
-        showFlashMessage('Error loading cart. Please try again.', 'error');
-        emptyCartMessage.style.display = 'block';
-        cartSummarySection.style.display = 'none';
-    }
-}
-
-// Attach event listeners for quantity changes and item removal on cart page
-function initializeCartPageElements() {
-    const cartItemsList = document.getElementById('cart-items-list');
-
-    // Event delegation for quantity buttons
-    cartItemsList.addEventListener('click', async (event) => {
-        if (event.target.classList.contains('quantity-minus')) {
-            const productId = event.target.dataset.productId;
-            const input = event.target.nextElementSibling;
-            let quantity = parseInt(input.value) - 1;
-            if (quantity < 1) quantity = 1; // Prevent quantity from going below 1
-            input.value = quantity;
-            await updateCartItemQuantity(productId, quantity);
-        } else if (event.target.classList.contains('quantity-plus')) {
-            const productId = event.target.dataset.productId;
-            const input = event.target.previousElementSibling;
-            let quantity = parseInt(input.value) + 1;
-            input.value = quantity;
-            await updateCartItemQuantity(productId, quantity);
-        } else if (event.target.classList.contains('remove-item-btn') || event.target.closest('.remove-item-btn')) {
-            const button = event.target.classList.contains('remove-item-btn') ? event.target : event.target.closest('.remove-item-btn');
-            const productId = button.dataset.productId;
-            await removeCartItem(productId);
-        }
-    });
-
-    // Event listener for quantity input changes
-    cartItemsList.addEventListener('change', async (event) => {
-        if (event.target.classList.contains('item-quantity-input')) {
-            const productId = event.target.dataset.productId;
-            let quantity = parseInt(event.target.value);
-            if (isNaN(quantity) || quantity < 1) {
-                quantity = 1; // Default to 1 if invalid input
-                event.target.value = 1;
-            }
-            await updateCartItemQuantity(productId, quantity);
-        }
-    });
-}
-
-// Function to update item quantity in cart via API
-async function updateCartItemQuantity(productId, quantity) {
-    try {
-        const response = await fetch('/update_cart_quantity', {
+        const response = await fetch('/cart/update_quantity', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({ product_id: productId, quantity: quantity })
+            body: JSON.stringify({ product_id: productId, delta: delta })
         });
 
         const data = await response.json();
+        console.log("updateQuantityInCart API response:", { status: response.status, data: data });
+
+        if (response.status === 401 || data.error === 'Not logged in') {
+            showFlashMessage(data.message || 'Please log in to update your cart.', 'warning');
+            setTimeout(() => window.location.href = '/account', 1500);
+            return;
+        }
 
         if (response.ok && data.success) {
             showFlashMessage(data.message, 'success');
-            renderCartItems(); // Re-render cart to update totals and item totals
-            updateCartCountInHeader(); // Update header count
+            updateCartCountInHeader(); 
+            renderCartItems();
         } else {
-            showFlashMessage(data.message || 'Failed to update quantity.', 'error');
+            showFlashMessage(data.message || data.error || 'Failed to update cart quantity.', 'danger');
         }
     } catch (error) {
-        console.error('Error updating cart quantity:', error);
-        showFlashMessage('Error updating cart. Please try again.', 'error');
+        console.error('Network or parsing error updating cart quantity:', error);
+        showFlashMessage('An error occurred while updating cart quantity.', 'danger');
     }
 }
 
-// Function to remove item from cart via API
-async function removeCartItem(productId) {
-    if (!confirm('Are you sure you want to remove this item from your cart?')) {
+async function removeFromCart(productId) {
+    // Replaced confirm with custom modal/flash logic to avoid browser alerts.
+    // For now, keeping confirm() for quick fix, but note the instruction.
+    if (!confirm("Are you sure you want to remove this item from your cart?")) {
         return;
     }
+    console.log(`Removing product ${productId} from cart...`);
+
     try {
-        const response = await fetch('/remove_from_cart', {
+        const response = await fetch('/cart/remove_item', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
             },
             body: JSON.stringify({ product_id: productId })
         });
 
         const data = await response.json();
+        console.log("removeFromCart API response:", { status: response.status, data: data });
+
+        if (response.status === 401 || data.error === 'Not logged in') {
+            showFlashMessage(data.message || 'Please log in to manage your cart.', 'warning');
+            setTimeout(() => window.location.href = '/account', 1500);
+            return;
+        }
 
         if (response.ok && data.success) {
-            showFlashMessage(data.message, 'success');
-            renderCartItems(); // Re-render cart
-            updateCartCountInHeader(); // Update header count
+            showFlashMessage(data.message, 'info');
+            updateCartCountInHeader(); 
+            renderCartItems();
         } else {
-            showFlashMessage(data.message || 'Failed to remove item.', 'error');
+            showFlashMessage(data.message || data.error || 'Failed to remove item from cart.', 'warning');
         }
     } catch (error) {
-        console.error('Error removing item from cart:', error);
-        showFlashMessage('Error removing item. Please try again.', 'error');
+        console.error('Network or parsing error removing item from cart:', error);
+        showFlashMessage('An error occurred while removing item.', 'danger');
     }
 }
 
+// ======================== 🧾 Cart Page Rendering ========================
 
-// ======================== Payment Page ========================
+async function renderCartItems() {
+    const cartPageContainer = document.getElementById('cart-page-container');
+    if (!cartPageContainer) return;
+
+    const cartItemsList = document.getElementById('cart-items-list');
+    const cartTotalElement = document.getElementById('cart-total');
+    const cartTotalGrandElement = document.getElementById('cart-total-grand'); // Assuming you want a grand total
+    const emptyCartMessage = document.getElementById('empty-cart-message');
+    const cartSummarySection = document.getElementById('cart-summary-section');
+    const totalAmountHiddenInput = document.getElementById('total-amount-hidden');
+    const cartDataHiddenInput = document.getElementById('cart-data-hidden');
+
+    if (!cartItemsList || !cartTotalElement || !emptyCartMessage || !cartSummarySection || !totalAmountHiddenInput || !cartDataHiddenInput) {
+        console.error("Missing essential cart page elements. Check your cart.html structure.");
+        return;
+    }
+    console.log("Attempting to render cart items...");
+
+    try {
+        const response = await fetch('/cart/items', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' } // Explicitly send XHR header
+        });
+        
+        // Parse JSON immediately, as Flask now guarantees JSON even for auth errors
+        const data = await response.json();
+        console.log("renderCartItems API response:", { status: response.status, data: data });
+        
+        // Check for 401 status or specific error message from Flask
+        if (response.status === 401 || data.error === 'Not logged in') {
+            showFlashMessage(data.message || "Please log in to view your cart items.", "warning");
+            setTimeout(() => window.location.href = '/account', 1500);
+            // After showing message and redirecting, clear and hide cart elements immediately
+            cartItemsList.innerHTML = '';
+            emptyCartMessage.style.display = 'block';
+            cartSummarySection.style.display = 'none';
+            cartTotalElement.textContent = '0.00';
+            if (cartTotalGrandElement) cartTotalGrandElement.textContent = '0.00';
+            totalAmountHiddenInput.value = '0.00';
+            cartDataHiddenInput.value = '[]';
+            updateCartCountInHeader(); // Update header to reflect empty cart
+            return; 
+        }
+
+        // Cart items are now guaranteed to be available (even if empty)
+        const cart = Array.isArray(data.items) ? data.items : Object.values(data.items || {});
+
+        cartItemsList.innerHTML = '';
+        let total = 0;
+
+        if (cart.length === 0) {
+            console.log("Cart is empty. Displaying empty message.");
+            emptyCartMessage.style.display = 'block';
+            cartSummarySection.style.display = 'none';
+            cartTotalElement.textContent = '0.00';
+            if (cartTotalGrandElement) cartTotalGrandElement.textContent = '0.00';
+            totalAmountHiddenInput.value = '0.00';
+            cartDataHiddenInput.value = '[]';
+            updateCartCountInHeader();
+            return;
+        } else {
+            console.log(`Cart has ${cart.length} items. Displaying items.`);
+            emptyCartMessage.style.display = 'none';
+            cartSummarySection.style.display = 'block';
+        }
+
+        cart.forEach(item => {
+            const itemPrice = parseFloat(item.price) || 0;
+            const itemQuantity = parseInt(item.quantity) || 0;
+            const subtotal = itemPrice * itemQuantity;
+            total += subtotal;
+            // CRITICAL FIX: Prepend 'images/' to the image_path here for correct URL
+            // This line is already correct, assuming item.image_path is just the filename.
+            const imagePath = `/static/images/${item.image_path}`; 
+
+            const cartItemDiv = document.createElement('div');
+            cartItemDiv.className = 'cart-item';
+            cartItemDiv.innerHTML = `
+                <img src="${imagePath}" alt="${item.name}" class="cart-item-img">
+                <div class="item-details">
+                    <h3>${item.name}</h3>
+                    <p class="item-price">ETB ${itemPrice.toFixed(2)}</p>
+                    <p class="item-subtotal">Subtotal: ETB ${subtotal.toFixed(2)}</p>
+                    <div class="quantity-controls">
+                        <button type="button" class="quantity-btn decrease-quantity" data-product-id="${item.id}">-</button>
+                        <span class="item-quantity">${itemQuantity}</span>
+                        <button type="button" class="quantity-btn increase-quantity" data-product-id="${item.id}">+</button>
+                    </div>
+                </div>
+                <button type="button" class="remove-item-btn" data-product-id="${item.id}" title="Remove item">
+                    <i class="fas fa-trash"></i>
+                </button>
+            `;
+            cartItemsList.appendChild(cartItemDiv);
+        });
+
+        cartTotalElement.textContent = total.toFixed(2);
+        if (cartTotalGrandElement) cartTotalGrandElement.textContent = total.toFixed(2); // Set grand total as well
+        totalAmountHiddenInput.value = total.toFixed(2);
+        cartDataHiddenInput.value = JSON.stringify(cart);
+        updateCartCountInHeader();
+    } catch (err) {
+        console.error('Failed to fetch or render cart items:', err);
+        showFlashMessage('Failed to load cart items. Please try refreshing the page.', 'danger');
+    }
+}
+
+function initializeCartPageElements() {
+    console.log('✅ Cart page elements initialized.');
+    const cartItemsList = document.getElementById('cart-items-list');
+
+    if (cartItemsList) {
+        cartItemsList.addEventListener('click', async (e) => {
+            const target = e.target;
+            const productId = target.closest('[data-product-id]')?.getAttribute('data-product-id');
+
+            if (!productId) return;
+
+            if (target.classList.contains('decrease-quantity') || (target.tagName === 'I' && target.closest('.decrease-quantity'))) {
+                await updateQuantityInCart(productId, -1);
+            } else if (target.classList.contains('increase-quantity') || (target.tagName === 'I' && target.closest('.increase-quantity'))) {
+                await updateQuantityInCart(productId, 1);
+            } else if (target.closest('.remove-item-btn')) {
+                await removeFromCart(productId);
+            }
+        });
+    }
+}
+
+// ======================== 💳 Payment Page ========================
 
 function initializePaymentOptions() {
-    const paymentMethodRadios = document.querySelectorAll('input[name=\"payment_method\"]');
+    const paymentMethodRadios = document.querySelectorAll('input[name="payment_method"]');
     const telebirrDetails = document.getElementById('telebirr-details');
     const cbebirrDetails = document.getElementById('cbebirr-details');
 
@@ -335,7 +390,7 @@ function initializePaymentOptions() {
             if (telebirrDetails) telebirrDetails.style.display = 'none';
             if (cbebirrDetails) cbebirrDetails.style.display = 'none';
 
-            const selectedMethod = document.querySelector('input[name=\"payment_method\"]:checked')?.value;
+            const selectedMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
             if (selectedMethod === 'telebirr' && telebirrDetails) {
                 telebirrDetails.style.display = 'block';
             } else if (selectedMethod === 'cbebirr' && cbebirrDetails) {
@@ -356,59 +411,5 @@ function initializePaymentOptions() {
 
 // ======================== 🛠️ Admin Panel (Placeholder) ========================
 function initializeAdminPanel() {
-    console.log("Admin Panel JS Initialized (placeholder)");
-    // Add any admin-specific JS here, e.g., for order status updates
-    const adminOrdersTable = document.querySelector('.admin-orders-table');
-    if (adminOrdersTable) {
-        adminOrdersTable.addEventListener('change', async (event) => {
-            if (event.target.classList.contains('order-status-select')) {
-                const selectElement = event.target;
-                const orderId = selectElement.dataset.orderId;
-                const newStatus = selectElement.value;
-
-                try {
-                    const response = await fetch('/update_order_status', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ order_id: orderId, status: newStatus })
-                    });
-                    const data = await response.json();
-                    if (response.ok && data.success) {
-                        showFlashMessage(data.message, 'success');
-                        // Optional: update the specific status span on the page without full reload
-                        const statusSpan = selectElement.closest('td').previousElementSibling.querySelector('.order-status');
-                        if (statusSpan) {
-                            statusSpan.textContent = newStatus.replace('_', ' ').capitalize();
-                            statusSpan.className = `order-status status-${newStatus.toLowerCase().replace(' ', '_')}`;
-                        }
-                    } else {
-                        showFlashMessage(data.message || 'Failed to update order status.', 'error');
-                    }
-                } catch (error) {
-                    console.error('Error updating order status:', error);
-                    showFlashMessage('Error updating order status. Check connection.', 'error');
-                }
-            }
-        });
-    }
-
-    // Simple capitalize function for display
-    String.prototype.capitalize = function() {
-        return this.charAt(0).toUpperCase() + this.slice(1);
-    }
-}
-
-
-// ======================== 📱 Mobile Navigation Toggle ========================
-function initializeMobileNavToggle() {
-    const menuToggle = document.querySelector('.menu-toggle');
-    const navLinks = document.querySelector('.nav-links');
-
-    if (menuToggle && navLinks) {
-        menuToggle.addEventListener('click', () => {
-            navLinks.classList.toggle('active');
-        });
-    }
+    console.log("Admin panel initialized.");
 }
