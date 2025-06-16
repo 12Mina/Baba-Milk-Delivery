@@ -44,6 +44,25 @@ document.addEventListener('DOMContentLoaded', () => {
             showFlashMessage('📦 Tracking feature is coming soon!', 'info');
         });
     }
+
+    // ======================== Mobile Menu Toggle ========================
+    const mobileMenu = document.getElementById('mobile-menu');
+    const navLinks = document.getElementById('nav-links');
+
+    if (mobileMenu && navLinks) {
+        mobileMenu.addEventListener('click', () => {
+            navLinks.classList.toggle('active');
+        });
+
+        // Close menu if a link is clicked (optional)
+        navLinks.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                if (navLinks.classList.contains('active')) {
+                    navLinks.classList.remove('active');
+                }
+            });
+        });
+    }
 });
 
 // ======================== ✨ Flash Message Utilities ========================
@@ -73,312 +92,192 @@ function displayFlaskFlashMessages() {
         try {
             // Parse the JSON string from the hidden script tag
             const flashedMessages = JSON.parse(flashMessagesDataElement.textContent || '[]');
-            const flashMessageContainer = document.getElementById('flash-message-container');
+            
+            flashedMessages.forEach(message => {
+                const [category, text] = message;
+                showFlashMessage(text, category);
+            });
 
-            if (flashedMessages.length > 0 && flashMessageContainer) {
-                flashedMessages.forEach(msg => {
-                    const alertDiv = document.createElement('div');
-                    alertDiv.className = `alert alert-${msg.category}`; // Use Flask's category directly
-                    alertDiv.textContent = msg.message;
-                    flashMessageContainer.appendChild(alertDiv);
+            // Clear the script tag content after displaying to prevent re-display on back/forward
+            flashMessagesDataElement.textContent = '[]';
 
-                    // Auto-hide messages
-                    setTimeout(() => {
-                        alertDiv.remove();
-                    }, 4000); // Flask messages disappear after 4 seconds
-                });
-                // Clear the content of the script tag so messages aren't re-displayed on soft navigations
-                flashMessagesDataElement.textContent = '[]'; 
-            }
-        } catch (e) {
-            console.error("Error parsing Flask flash messages:", e);
+        } catch (error) {
+            console.error("Error parsing flash messages:", error);
         }
     }
 }
 
 
-// ======================== 🛒 Cart Functions (Core Logic) ========================
+// ======================== 🛒 Cart Functionality ========================
 
-async function updateCartCountInHeader() {
-    console.log("Attempting to update cart count in header...");
-    try {
-        const response = await fetch('/cart/total_quantity');
-        if (!response.ok) {
-            console.error(`Failed to fetch cart total quantity: HTTP error! status: ${response.status}`);
-            const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
-            if (cartCounter) cartCounter.textContent = '0';
-            return; 
-        }
-        const data = await response.json();
-        const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
-        if (cartCounter) {
-            cartCounter.textContent = data.total_quantity > 0 ? data.total_quantity : '';
-            console.log(`Cart count updated to: ${data.total_quantity}`);
-        }
-    } catch (error) {
-        console.error("Error fetching cart total quantity:", error);
-        const cartCounter = document.getElementById('cart-count'); // Use getElementById for direct ID
-        if (cartCounter) cartCounter.textContent = '';
+let cart = JSON.parse(localStorage.getItem('cart')) || {};
+
+function saveCart() {
+    localStorage.setItem('cart', JSON.stringify(cart));
+    updateCartCountInHeader();
+}
+
+function updateCartCountInHeader() {
+    const cartCountElement = document.getElementById('cart-count');
+    if (cartCountElement) {
+        const totalItems = Object.values(cart).reduce((sum, item) => sum + item.quantity, 0);
+        cartCountElement.textContent = totalItems > 0 ? totalItems : 0;
+        cartCountElement.style.display = totalItems > 0 ? 'inline-block' : 'none'; // Show/hide based on count
     }
 }
 
 function initializeAddToCartButtons() {
-    const buttons = document.querySelectorAll('.add-to-cart-btn');
-    buttons.forEach(button => {
-        button.addEventListener('click', () => {
-            const productId = button.getAttribute('data-product-id');
-            const productName = button.closest('.product-card')?.querySelector('h3')?.textContent || 'Unknown Product';
-            addToCart(productId, 1, productName); // Pass quantity as 1 by default
+    const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
+    addToCartButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            const productId = e.target.dataset.productId;
+            const productName = e.target.dataset.name;
+            const productPrice = parseFloat(e.target.dataset.price);
+
+            if (cart[productId]) {
+                cart[productId].quantity += 1;
+            } else {
+                cart[productId] = {
+                    id: productId,
+                    name: productName,
+                    price: productPrice,
+                    quantity: 1
+                };
+            }
+            saveCart();
+            showFlashMessage(`${productName} added to cart!`, 'success');
         });
     });
 }
 
-async function addToCart(productId, quantity = 1, productName = 'item') {
-    console.log(`🧺 Attempting to add product ${productId} (${productName}) to cart...`);
-    try {
-        const response = await fetch('/add_to_cart', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest' // Crucial for Flask to identify AJAX
-            },
-            body: JSON.stringify({ product_id: productId, quantity: quantity })
-        });
 
-        // Parse JSON immediately, as Flask now guarantees JSON even for auth errors
-        const data = await response.json();
-        console.log("addToCart API response:", { status: response.status, data: data });
+// ======================== 🛒 Cart Page ========================
 
-
-        // Check for 401 status OR specific error message from Flask
-        if (response.status === 401 || data.error === 'Not logged in') {
-            showFlashMessage(data.message || 'Please log in to add items to your cart.', 'warning');
-            setTimeout(() => window.location.href = '/account', 1500); // Redirect to login
-            return;
-        }
-
-        // Now handle successful (2xx) or other non-401 errors
-        if (response.ok && data.success) { 
-            showFlashMessage(data.message || `Successfully added ${productName} to cart!`, 'success');
-            updateCartCountInHeader(); 
-            if (document.body.contains(document.getElementById('cart-page-container'))) {
-                renderCartItems(); // Re-render cart if on the cart page
-            }
-        } else {
-            // Server returned a 2xx status but 'success: false' or other non-401 error
-            showFlashMessage(data.message || data.error || 'Failed to add item to cart.', 'danger');
-        }
-    } catch (error) {
-        console.error("Network or parsing error adding to cart:", error);
-        showFlashMessage(`Error: Could not add ${productName} to cart. Check your connection.`, 'danger');
-    }
-}
-
-async function updateQuantityInCart(productId, delta) {
-    console.log(`Updating quantity for product ${productId} by ${delta}...`);
-    try {
-        const response = await fetch('/cart/update_quantity', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ product_id: productId, delta: delta })
-        });
-
-        const data = await response.json();
-        console.log("updateQuantityInCart API response:", { status: response.status, data: data });
-
-        if (response.status === 401 || data.error === 'Not logged in') {
-            showFlashMessage(data.message || 'Please log in to update your cart.', 'warning');
-            setTimeout(() => window.location.href = '/account', 1500);
-            return;
-        }
-
-        if (response.ok && data.success) {
-            showFlashMessage(data.message, 'success');
-            updateCartCountInHeader(); 
-            renderCartItems();
-        } else {
-            showFlashMessage(data.message || data.error || 'Failed to update cart quantity.', 'danger');
-        }
-    } catch (error) {
-        console.error('Network or parsing error updating cart quantity:', error);
-        showFlashMessage('An error occurred while updating cart quantity.', 'danger');
-    }
-}
-
-async function removeFromCart(productId) {
-    // Replaced confirm with custom modal/flash logic to avoid browser alerts.
-    // For now, keeping confirm() for quick fix, but note the instruction.
-    if (!confirm("Are you sure you want to remove this item from your cart?")) {
-        return;
-    }
-    console.log(`Removing product ${productId} from cart...`);
-
-    try {
-        const response = await fetch('/cart/remove_item', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ product_id: productId })
-        });
-
-        const data = await response.json();
-        console.log("removeFromCart API response:", { status: response.status, data: data });
-
-        if (response.status === 401 || data.error === 'Not logged in') {
-            showFlashMessage(data.message || 'Please log in to manage your cart.', 'warning');
-            setTimeout(() => window.location.href = '/account', 1500);
-            return;
-        }
-
-        if (response.ok && data.success) {
-            showFlashMessage(data.message, 'info');
-            updateCartCountInHeader(); 
-            renderCartItems();
-        } else {
-            showFlashMessage(data.message || data.error || 'Failed to remove item from cart.', 'warning');
-        }
-    } catch (error) {
-        console.error('Network or parsing error removing item from cart:', error);
-        showFlashMessage('An error occurred while removing item.', 'danger');
-    }
-}
-
-// ======================== 🧾 Cart Page Rendering ========================
-
-async function renderCartItems() {
-    const cartPageContainer = document.getElementById('cart-page-container');
-    if (!cartPageContainer) return;
-
+function renderCartItems() {
     const cartItemsList = document.getElementById('cart-items-list');
-    const cartTotalElement = document.getElementById('cart-total');
-    const cartTotalGrandElement = document.getElementById('cart-total-grand'); // Assuming you want a grand total
     const emptyCartMessage = document.getElementById('empty-cart-message');
     const cartSummarySection = document.getElementById('cart-summary-section');
-    const totalAmountHiddenInput = document.getElementById('total-amount-hidden');
-    const cartDataHiddenInput = document.getElementById('cart-data-hidden');
+    const cartTotalAmount = document.getElementById('cart-total-amount');
+    const cartSubtotal = document.getElementById('cart-subtotal');
+    const totalAmountHidden = document.getElementById('total-amount-hidden');
+    const cartDataHidden = document.getElementById('cart-data-hidden'); // For sending cart data to Flask
 
-    if (!cartItemsList || !cartTotalElement || !emptyCartMessage || !cartSummarySection || !totalAmountHiddenInput || !cartDataHiddenInput) {
-        console.error("Missing essential cart page elements. Check your cart.html structure.");
-        return;
+    if (!cartItemsList || !emptyCartMessage || !cartSummarySection || !cartTotalAmount || !cartSubtotal) {
+        return; // Exit if elements not found (not on cart page)
     }
-    console.log("Attempting to render cart items...");
 
-    try {
-        const response = await fetch('/cart/items', {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' } // Explicitly send XHR header
-        });
-        
-        // Parse JSON immediately, as Flask now guarantees JSON even for auth errors
-        const data = await response.json();
-        console.log("renderCartItems API response:", { status: response.status, data: data });
-        
-        // Check for 401 status or specific error message from Flask
-        if (response.status === 401 || data.error === 'Not logged in') {
-            showFlashMessage(data.message || "Please log in to view your cart items.", "warning");
-            setTimeout(() => window.location.href = '/account', 1500);
-            // After showing message and redirecting, clear and hide cart elements immediately
-            cartItemsList.innerHTML = '';
-            emptyCartMessage.style.display = 'block';
-            cartSummarySection.style.display = 'none';
-            cartTotalElement.textContent = '0.00';
-            if (cartTotalGrandElement) cartTotalGrandElement.textContent = '0.00';
-            totalAmountHiddenInput.value = '0.00';
-            cartDataHiddenInput.value = '[]';
-            updateCartCountInHeader(); // Update header to reflect empty cart
-            return; 
-        }
+    cartItemsList.innerHTML = '';
+    let subtotal = 0;
+    const itemsInCart = Object.values(cart);
 
-        // Cart items are now guaranteed to be available (even if empty)
-        const cart = Array.isArray(data.items) ? data.items : Object.values(data.items || {});
+    if (itemsInCart.length === 0) {
+        emptyCartMessage.style.display = 'block';
+        cartSummarySection.style.display = 'none';
+        return;
+    } else {
+        emptyCartMessage.style.display = 'none';
+        cartSummarySection.style.display = 'block';
+    }
 
-        cartItemsList.innerHTML = '';
-        let total = 0;
+    itemsInCart.forEach(item => {
+        const itemTotal = item.price * item.quantity;
+        subtotal += itemTotal;
 
-        if (cart.length === 0) {
-            console.log("Cart is empty. Displaying empty message.");
-            emptyCartMessage.style.display = 'block';
-            cartSummarySection.style.display = 'none';
-            cartTotalElement.textContent = '0.00';
-            if (cartTotalGrandElement) cartTotalGrandElement.textContent = '0.00';
-            totalAmountHiddenInput.value = '0.00';
-            cartDataHiddenInput.value = '[]';
-            updateCartCountInHeader();
-            return;
-        } else {
-            console.log(`Cart has ${cart.length} items. Displaying items.`);
-            emptyCartMessage.style.display = 'none';
-            cartSummarySection.style.display = 'block';
-        }
+        const cartItemDiv = document.createElement('div');
+        cartItemDiv.className = 'cart-item';
+        cartItemDiv.innerHTML = `
+            <img src="${Flask.url_for('static', {filename: 'images/product' + item.id + '.png'})}" alt="${item.name}" class="cart-item-img">
+            <div class="item-details">
+                <h3>${item.name}</h3>
+                <p class="item-price">ETB ${(item.price).toFixed(2)}</p>
+                <p>Total: ETB ${(itemTotal).toFixed(2)}</p>
+            </div>
+            <div class="quantity-controls">
+                <button data-product-id="${item.id}" data-action="decrease">-</button>
+                <span>${item.quantity}</span>
+                <button data-product-id="${item.id}" data-action="increase">+</button>
+            </div>
+            <button class="remove-item-btn" data-product-id="${item.id}">Remove</button>
+        `;
+        cartItemsList.appendChild(cartItemDiv);
+    });
 
-        cart.forEach(item => {
-            const itemPrice = parseFloat(item.price) || 0;
-            const itemQuantity = parseInt(item.quantity) || 0;
-            const subtotal = itemPrice * itemQuantity;
-            total += subtotal;
-            // CRITICAL FIX: Prepend 'images/' to the image_path here for correct URL
-            // This line is already correct, assuming item.image_path is just the filename.
-            const imagePath = `/static/images/${item.image_path}`; 
+    cartSubtotal.textContent = subtotal.toFixed(2);
+    // For now, total is same as subtotal, add shipping/taxes logic here if needed
+    cartTotalAmount.textContent = subtotal.toFixed(2);
 
-            const cartItemDiv = document.createElement('div');
-            cartItemDiv.className = 'cart-item';
-            cartItemDiv.innerHTML = `
-                <img src="${imagePath}" alt="${item.name}" class="cart-item-img">
-                <div class="item-details">
-                    <h3>${item.name}</h3>
-                    <p class="item-price">ETB ${itemPrice.toFixed(2)}</p>
-                    <p class="item-subtotal">Subtotal: ETB ${subtotal.toFixed(2)}</p>
-                    <div class="quantity-controls">
-                        <button type="button" class="quantity-btn decrease-quantity" data-product-id="${item.id}">-</button>
-                        <span class="item-quantity">${itemQuantity}</span>
-                        <button type="button" class="quantity-btn increase-quantity" data-product-id="${item.id}">+</button>
-                    </div>
-                </div>
-                <button type="button" class="remove-item-btn" data-product-id="${item.id}" title="Remove item">
-                    <i class="fas fa-trash"></i>
-                </button>
-            `;
-            cartItemsList.appendChild(cartItemDiv);
-        });
-
-        cartTotalElement.textContent = total.toFixed(2);
-        if (cartTotalGrandElement) cartTotalGrandElement.textContent = total.toFixed(2); // Set grand total as well
-        totalAmountHiddenInput.value = total.toFixed(2);
-        cartDataHiddenInput.value = JSON.stringify(cart);
-        updateCartCountInHeader();
-    } catch (err) {
-        console.error('Failed to fetch or render cart items:', err);
-        showFlashMessage('Failed to load cart items. Please try refreshing the page.', 'danger');
+    // Update hidden fields for Flask
+    if (totalAmountHidden) {
+        totalAmountHidden.value = subtotal.toFixed(2);
+    }
+    if (cartDataHidden) {
+        // Convert cart object to a simple array of item objects suitable for Flask
+        const simpleCartData = Object.values(cart).map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity
+        }));
+        cartDataHidden.value = JSON.stringify(simpleCartData);
     }
 }
 
 function initializeCartPageElements() {
-    console.log('✅ Cart page elements initialized.');
     const cartItemsList = document.getElementById('cart-items-list');
-
     if (cartItemsList) {
-        cartItemsList.addEventListener('click', async (e) => {
+        cartItemsList.addEventListener('click', (e) => {
             const target = e.target;
-            const productId = target.closest('[data-product-id]')?.getAttribute('data-product-id');
+            const productId = target.dataset.productId;
+            const action = target.dataset.action;
 
             if (!productId) return;
 
-            if (target.classList.contains('decrease-quantity') || (target.tagName === 'I' && target.closest('.decrease-quantity'))) {
-                await updateQuantityInCart(productId, -1);
-            } else if (target.classList.contains('increase-quantity') || (target.tagName === 'I' && target.closest('.increase-quantity'))) {
-                await updateQuantityInCart(productId, 1);
-            } else if (target.closest('.remove-item-btn')) {
-                await removeFromCart(productId);
+            if (action === 'increase') {
+                cart[productId].quantity += 1;
+                showFlashMessage(`Increased quantity of ${cart[productId].name}`, 'info');
+            } else if (action === 'decrease') {
+                if (cart[productId].quantity > 1) {
+                    cart[productId].quantity -= 1;
+                    showFlashMessage(`Reduced quantity of ${cart[productId].name}`, 'info');
+                } else {
+                    delete cart[productId];
+                    showFlashMessage(`Removed ${cart[productId]?.name || 'item'} from cart`, 'danger');
+                }
+            } else if (target.classList.contains('remove-item-btn')) {
+                const itemName = cart[productId]?.name || 'item';
+                delete cart[productId];
+                showFlashMessage(`Removed ${itemName} from cart`, 'danger');
             }
+            saveCart();
+            renderCartItems(); // Re-render the cart after any change
+        });
+    }
+
+    // Optional: Implement coupon button logic if you have backend support
+    const applyCouponBtn = document.querySelector('.coupon-section .btn-secondary');
+    if (applyCouponBtn) {
+        applyCouponBtn.addEventListener('click', () => {
+            const couponCode = document.getElementById('coupon-code').value;
+            if (couponCode) {
+                showFlashMessage(`Coupon "${couponCode}" applied! (Feature coming soon)`, 'info');
+                // You'd typically send this to Flask via AJAX to apply discount
+            } else {
+                showFlashMessage('Please enter a coupon code.', 'warning');
+            }
+        });
+    }
+
+    // Google Map button placeholder
+    const useGoogleMapButton = document.getElementById('useGoogleMapButton');
+    if (useGoogleMapButton) {
+        useGoogleMapButton.addEventListener('click', () => {
+            showFlashMessage('Google Maps integration is coming soon!', 'info');
         });
     }
 }
 
-// ======================== 💳 Payment Page ========================
+
+// ======================== 💰 Payment Page ========================
 
 function initializePaymentOptions() {
     const paymentMethodRadios = document.querySelectorAll('input[name="payment_method"]');
@@ -406,10 +305,33 @@ function initializePaymentOptions() {
     }
 }
 
-// ======================== 🔐 Account Page ========================
-// Function removed as account.html handles its own JS logic directly.
-
 // ======================== 🛠️ Admin Panel (Placeholder) ========================
 function initializeAdminPanel() {
-    console.log("Admin panel initialized.");
+    console.log("Admin Panel JS initialized.");
+
+    // Auto-submit form when status changes
+    const statusForms = document.querySelectorAll('.status-update-form');
+    statusForms.forEach(form => {
+        const select = form.querySelector('select[name="status"]');
+        if (select) {
+            select.addEventListener('change', () => {
+                form.submit();
+            });
+        }
+    });
+}
+
+// Add a global Flask object if it doesn't exist, for url_for in JS
+// This simulates Flask-JS functionality if not using a specific extension
+if (typeof Flask === 'undefined') {
+    window.Flask = {
+        url_for: function(endpoint, kwargs) {
+            // Basic simulation for static files. For dynamic routes, you'd need a mapping from Flask.
+            if (endpoint === 'static') {
+                return `/static/${kwargs.filename}`;
+            }
+            // Fallback for other endpoints (might not work directly for complex routes without server-side JS mapping)
+            return `/${endpoint}`; 
+        }
+    };
 }
