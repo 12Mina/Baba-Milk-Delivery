@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Verify OTP{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="modal-content"> {# Re-using modal-content style for a centered box #}
+        <h2>Verify Your Phone Number</h2>
+        <form method="POST" action="{{ url_for('verify_otp') }}">
+            <p class="help-text">An OTP has been sent to <strong>{{ phone }}</strong>.</p>
+            <div class="form-group">
+                <label for="otp"><b>Enter OTP</b></label>
+                <input type="text" placeholder="Enter 6-digit OTP" name="otp" id="otp" required autocomplete="one-time-code" pattern="[0-9]{6}">
+                <small class="help-text">Check your console for the simulated OTP.</small>
+            </div>
+            <button type="submit" class="btn-primary">Verify OTP</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

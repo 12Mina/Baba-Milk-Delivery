@@ -1,107 +1,35 @@
 {% extends "base.html" %}
 
-{% block title %}Login / Signup{% endblock %}
+{% block title %}Login / Signup with OTP{% endblock %}
 
 {% block content %}
 <div class="auth-container" id="account-page-container">
-    <div id="login-form-container">
-        <h2>Login</h2>
-        <form action="{{ url_for('account') }}" method="POST" autocomplete="on">
-            <label for="login-phone"><b>Phone Number</b></label>
-            <input type="tel" placeholder="Enter Phone Number" name="phone" id="login-phone" required autocomplete="tel">
-
-            <label for="login-password"><b>Password</b></label>
-            <div class="password-wrapper">
-                <input type="password" placeholder="Enter Password" name="password" id="login-password" required autocomplete="current-password">
-                <i class="fas fa-eye toggle-password" onclick="togglePassword('login-password', this)"></i>
-            </div>
-
-            <button type="submit" name="login_submit">Login</button>
-        </form>
-        <a href="#" id="toggle-signup" class="toggle-link">Don't have an account? Sign Up</a>
-    </div>
-</div>
-
-<!-- Signup Modal -->
-<div id="signupModal" class="modal">
-    <div class="modal-content">
-        <span class="close-button" id="close-signup">&times;</span>
-        <h2>Sign Up</h2>
-        <form action="{{ url_for('signup') }}" method="POST" autocomplete="on">
-            <label for="signup-name"><b>First Name</b></label>
-            <input type="text" placeholder="Enter First Name" name="name" id="signup-name" required autocomplete="given-name">
-
-            <label for="signup-lastname"><b>Last Name (Optional)</b></label>
-            <input type="text" placeholder="Enter Last Name" name="lastname" id="signup-lastname" autocomplete="family-name">
-
-            <label for="signup-phone"><b>Phone Number</b></label>
-            <input type="tel" placeholder="Enter Phone Number" name="phone" id="signup-phone" required autocomplete="tel">
-
-            <label for="signup-email"><b>Email (Optional)</b></label>
-            <input type="email" placeholder="Enter Email" name="email" id="signup-email" autocomplete="email">
-
-            <label for="signup-psw"><b>Password</b></label>
-            <div class="password-wrapper">
-                <input type="password" placeholder="Enter Password" name="psw" id="signup-psw" required autocomplete="new-password">
-                <i class="fas fa-eye toggle-password" onclick="togglePassword('signup-psw', this)"></i>
-            </div>
-
-            <label for="signup-psw-repeat"><b>Repeat Password</b></label>
-            <div class="password-wrapper">
-                <input type="password" placeholder="Repeat Password" name="psw-repeat" id="signup-psw-repeat" required autocomplete="new-password">
-                <i class="fas fa-eye toggle-password" onclick="togglePassword('signup-psw-repeat', this)"></i>
+    <div id="otp-entry-container">
+        <h2>Enter Your Details</h2>
+        <form id="send-otp-form" method="POST" action="{{ url_for('send_otp') }}">
+            <div class="form-group">
+                <label for="name"><b>Full Name (for Signup)</b></label>
+                <input type="text" placeholder="Enter Full Name" name="name" id="name" autocomplete="name">
+                <small class="help-text">Only required if you are signing up for a new account.</small>
             </div>
             
-            <button type="submit">Register</button>
+            <div class="form-group">
+                <label for="phone"><b>Phone Number</b></label>
+                <input type="tel" placeholder="Enter Phone Number (e.g., 09xxxxxxxx)" name="phone" id="phone" required autocomplete="tel" pattern="[0-9]{10}">
+                <small class="help-text">Your 10-digit phone number (e.g., 0912345678).</small>
+            </div>
+
+            <button type="submit" name="action" value="login" class="btn-primary">Login with OTP</button>
+            <button type="submit" name="action" value="signup" class="btn-secondary">Sign Up with OTP</button>
         </form>
-        <a href="#" id="toggle-login" class="toggle-link">Already have an account? Login</a>
     </div>
 </div>
+{% endblock %}
 
+{% block body_extra %}
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-    const signupModal = document.getElementById('signupModal');
-    const toggleSignup = document.getElementById('toggle-signup');
-    const toggleLogin = document.getElementById('toggle-login');
-    const closeBtn = document.getElementById('close-signup');
-
-    // Show signup modal when "Sign Up" is clicked
-    toggleSignup.addEventListener('click', function (e) {
-        e.preventDefault();
-        signupModal.style.display = 'block';
-    });
-
-    // Hide signup modal and show login form when "Login" is clicked inside the modal
-    toggleLogin.addEventListener('click', function (e) {
-        e.preventDefault();
-        signupModal.style.display = 'none';
-    });
-
-    // Close modal when 'x' is clicked
-    closeBtn.addEventListener('click', function () {
-        signupModal.style.display = 'none';
-    });
-
-    // Close modal when clicking outside of it
-    window.onclick = function (event) {
-        if (event.target == signupModal) {
-            signupModal.style.display = "none";
-        }
-    };
-});
-
-// Password show/hide functionality
-function togglePassword(id, icon) {
-    const input = document.getElementById(id);
-    if (input.type === "password") {
-        input.type = "text";
-        icon.classList.remove('fa-eye');
-        icon.classList.add('fa-eye-slash');
-    } else {
-        input.type = "password";
-        icon.classList.remove('fa-eye-slash');
-        icon.classList.add('fa-eye');
-    }
-}
+    // This script block is specific to account.html if needed for client-side validation
+    // For this OTP flow, most logic is now handled by Flask's server-side redirect.
+    // The pattern attribute on the phone input provides basic client-side validation.
 </script>
 {% endblock %}
