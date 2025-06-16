@@ -6,9 +6,8 @@
 <div class="cart-page-container" id="cart-page-container">
     <h2>Your Shopping Cart</h2>
 
-    {# This div for cart-specific flash messages is now secondary, as base.html handles main Flask flashes #}
     <div class="flash-messages" id="cart-flash" style="display: none;">
-        {# Content will be injected by JavaScript if needed #}
+        {# Injected via JS if needed #}
     </div>
 
     <!-- Empty Cart Message -->
@@ -18,25 +17,16 @@
     </div>
 
     <!-- Cart Summary & Items -->
-    <div id="cart-summary-section" style="display: none;"> {# Hidden by default, shown by JS if cart has items #}
+    <div id="cart-summary-section" style="display: none;">
         <!-- Cart Items List -->
         <div class="cart-items-list" id="cart-items-list">
-            <!-- Rendered dynamically by JS -->
-        </div>
-
-        <!-- Coupon Code -->
-        <div class="coupon-section">
-            <label for="coupon-code">Have a coupon?</label>
-            <input type="text" id="coupon-code" placeholder="Enter code">
-            <button type="button" class="btn-secondary">Apply Coupon</button>
-            <span class="coupon-message" id="coupon-message"></span>
+            <!-- Items rendered by JS -->
         </div>
 
         <div class="cart-total-summary">
             <h3>Order Summary</h3>
-            <p>Subtotal: ETB <span id="cart-total">0.00</span></p>
-            {# Potentially add discount/shipping lines here later #}
-            <p class="grand-total">Grand Total: ETB <span id="cart-total-grand">0.00</span></p>
+            <p>Subtotal: ETB <span id="cart-subtotal">0.00</span></p>
+            <p class="grand-total">Grand Total: ETB <span id="cart-total-amount">0.00</span></p>
             <p class="help-text">Shipping calculated at checkout based on address.</p>
         </div>
 
@@ -46,14 +36,14 @@
                 <div class="form-group">
                     <label for="delivery_phone">Phone Number:</label>
                     <input type="tel" id="delivery_phone" name="delivery_phone"
-                           placeholder="Enter phone number for delivery" required
-                           value="{{ session.get('delivery_info', {}).get('phone', user_phone) }}"> {# Use user_phone from context if available #}
+                        placeholder="Enter phone number for delivery" required
+                        value="{{ session.get('delivery_info', {}).get('phone', user_phone) }}">
                 </div>
 
                 <div class="form-group">
                     <label for="delivery_address">Delivery Address:</label>
                     <textarea id="delivery_address" name="delivery_address" rows="4"
-                              placeholder="Street, City, Building, Floor, Apartment number..." required>{{ session.get('delivery_info', {}).get('address', user_address) }}</textarea> {# Use user_address from context #}
+                        placeholder="Street, City, Building, Floor, Apartment number..." required>{{ session.get('delivery_info', {}).get('address', user_address) }}</textarea>
                 </div>
 
                 <!-- Hidden inputs populated via JS -->
@@ -67,15 +57,13 @@
     </div>
 </div>
 
-<!-- Cart Hover Preview Template (optional enhancement - this is for display only, not part of Flask/Jinja logic) -->
+<!-- Optional cart hover preview (not used by JS yet) -->
 <div id="cart-hover-preview" class="hidden">
     <h4>Cart Preview</h4>
     <ul id="cart-hover-items">
-        <!-- Inject items here via JS -->
+        <!-- Inject items via JS -->
     </ul>
     <p>Total: ETB <span id="hover-total">0.00</span></p>
     <a href="{{ url_for('cart') }}" class="btn-secondary">View Cart</a>
 </div>
-
-{# script.js is already included in base.html, so no need to include it again #}
 {% endblock %}

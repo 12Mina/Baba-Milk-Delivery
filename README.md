@@ -2,21 +2,24 @@
 
 ## Overview
 
-Baba-Milk-Delivery is a web application designed to streamline the milk delivery process. This project aims to provide a simple and efficient platform for managing milk orders, deliveries, and customer information.
+Baba-Milk-Delivery is a full-featured web application designed to streamline the local milk delivery process. The platform offers an intuitive interface for customers to browse dairy products, place orders, and track deliveries—while allowing admins to manage orders and products efficiently.
 
 ## Features
 
-* **User Authentication:** Secure login and registration for customers and delivery personnel.
-* **Order Management:** Create, view, and track milk orders.
-* **Delivery Scheduling:** Plan and manage delivery routes and times.
-* **Customer Database:** Maintain customer details and preferences.
-* **Payment Tracking:** Record and monitor payment status for orders.
+- 🧑‍💼 User Authentication with OTP (SMS-based via Twilio)
+- 🛒 Smart Cart: Add, update, or remove milk, yogurt, cheese, and butter products
+- 📦 Order Management with delivery tracking stages (placed, confirmed, packed, out for delivery, delivered)
+- 💸 Payment Options: Cash on Delivery, Telebirr, CBE Birr
+- 🔐 Admin Panel: Update order status and manage orders
+- 📨 Flash messaging and validation feedback
+- 🌍 Multi-language support potential (Amharic/English)
 
 ## Technologies Used
 
-* **Frontend:** HTML, CSS, JavaScript
-* **Backend:** Python with Flask
-* **Database:** SQLite, PostgreSQL
+- 🖥️ Frontend: HTML, CSS, JavaScript
+- ⚙️ Backend: Python with Flask
+- 🗃️ Database: SQLite (for development), PostgreSQL (for production)
+- 🌐 APIs: Twilio (for sending OTP via SMS)
 
 ## Setup and Installation
 
@@ -24,75 +27,97 @@ Follow these steps to get a development environment up and running on your local
 
 ### Prerequisites
 
-* Python 3.x
-* pip (Python package installer)
+- Python 3.x
+- pip (Python package installer)
 
 ### Installation Steps
 
-1.  **Clone the repository:**
+1. Clone the repository:
 
     ```bash
-    git clone [https://github.com/your-username/Baba-Milk-Delivery.git](https://github.com/your-username/Baba-Milk-Delivery.git)
+    git clone https://github.com/your-username/Baba-Milk-Delivery.git
     cd Baba-Milk-Delivery
     ```
 
-2.  **Create a virtual environment (recommended):**
+2. Create a virtual environment (recommended):
 
     ```bash
     python -m venv venv
     ```
 
-3.  **Activate the virtual environment:**
+3. Activate the virtual environment:
 
-    * **On Windows:**
-        ```bash
-        .\venv\Scripts\activate
-        ```
-    * **On macOS/Linux:**
-        ```bash
-        source venv/bin/activate
-        ```
+- On Windows:
 
-4.  **Install the required dependencies:**
+    ```bash
+    .\venv\Scripts\activate
+    ```
+
+- On macOS/Linux:
+
+    ```bash
+    source venv/bin/activate
+    ```
+
+4. Install the required dependencies:
 
     ```bash
     pip install -r requirements.txt
     ```
-    *If you don't have a `requirements.txt` file, create one in the root of your project and add `flask` to it, then run the command again.*
 
-5.  **Set up environment variables (if any):**
-    If your application uses environment variables (e.g., for database connections, API keys), create a `.env` file in the root directory and add them. Example:
+5. Set up environment variables:
 
+Create a .env file in the root directory and add:
+
+    ```env
+    FLASK_SECRET_KEY=your_flask_secret_key
+    DATABASE_URL=sqlite:///baba_milk.db
+    TWILIO_ACCOUNT_SID=your_twilio_account_sid
+    TWILIO_AUTH_TOKEN=your_twilio_auth_token
+    TWILIO_PHONE_NUMBER=your_twilio_registered_number
     ```
-    DATABASE_URL=sqlite:///site.db
-    SECRET_KEY=your_super_secret_key
-    ```
 
-6.  **Run the application:**
+6. Initialize the database and populate products (optional):
 
     ```bash
-    python api/app.py  # Or whatever your main Flask app file is
+    flask init-db
     ```
 
-    The application should now be running on `http://127.0.0.1:5000/` (or a similar address).
+7. Run the Flask app:
+
+    ```bash
+    python app.py
+    ```
+
+Visit http://127.0.0.1:5000 to access the application.
 
 ## Project Structure
+
 Baba-Milk-Delivery/
-├── api/
-│   └── app.py              # Main Flask application file
-│   └── templates/          # HTML templates
-│       └── home.html
-│       └── cart.html
-│       └── account.html
-|       └── dashbord.html
-|       └── paytame.html
-|        └── base.html
-|       └── admin.html
-│   └── static/             # CSS, JavaScript, images
-│       └── css/
-│       └── js/
-│       └── img/
-├── .env                    # Environment variables (local)
-├── requirements.txt        # Python dependencies
-├── README.md               # This README file
-└── vercel.json             # Vercel deployment configuration (if applicable)
+├── app.py # Main Flask application file
+├── templates/ # HTML templates
+│ ├── base.html
+│ ├── home.html
+│ ├── cart.html
+│ ├── account.html
+│ ├── verify_otp.html
+│ ├── dashboard.html
+│ ├── payment.html
+│ └── admin.html
+├── static/ # CSS, JS, images
+│ ├── css/
+│ │ └── style.css
+│ ├── js/
+│ │ └── script.js
+│ └── images/
+├── requirements.txt # Python dependencies
+├── .env # Local environment variables
+└── README.md # This file
+
+pgsql
+Copy
+Edit
+
+## License
+
+This project is open-source and free to use for educational and local business purposes. Feel free to contribute or suggest improve

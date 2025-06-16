@@ -7,7 +7,16 @@ import json
 import secrets
 import functools
 from flask_migrate import Migrate
-import random # Import random for OTP generation
+import random 
+from twilio.rest import Client
+from dotenv import load_dotenv
+load_dotenv()
+
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER")
+
+twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 # --- Flask App Setup ---
 app = Flask(__name__)
@@ -209,7 +218,6 @@ def admin_required(f):
     return decorated_function
 
 # --- Routes ---
-
 @app.route('/')
 @app.route('/home')
 def home():
@@ -222,56 +230,41 @@ def home():
                            yogurt_products=yogurt_products,
                            cheese_products=cheese_products,
                            butter_products=butter_products,
-                           datetime=datetime) # Ensure datetime is passed
+                           datetime=datetime)
 
-@app.route('/account', methods=['GET']) # Only GET is needed now for rendering the form
+@app.route('/account', methods=['GET'])
 def account():
-    # Pass datetime to the template for the copyright year in base.html
-    return render_template('account.html', datetime=datetime) # Ensure datetime is passed
+    return render_template('account.html', datetime=datetime)
 
 
 @app.route('/send_otp', methods=['POST'])
 def send_otp():
     phone = request.form.get('phone')
-    name = request.form.get('name') # name will be provided for signup
+    name = request.form.get('name')
 
-    if not phone:
-        flash("Phone number is required.", 'danger')
+    if not phone or not phone.isdigit() or len(phone) < 9:
+        flash("Enter a valid phone number.", 'danger')
         return redirect(url_for('account'))
 
-    # Validate phone format
-    if not phone.isdigit() or len(phone) < 9:
-        flash("Please enter a valid phone number (digits only, at least 9 digits).", 'danger')
-        return redirect(url_for('account'))
+    if not phone.startswith('+'):
+        phone = '+91' + phone  # adjust for your country
+
+    otp = str(random.randint(100000, 999999))
+    session['otp'] = otp
+    session['otp_phone'] = phone
+    session['otp_timestamp'] = datetime.now().timestamp()
 
     user = User.query.filter_by(phone=phone).first()
+    session['action_type'] = 'login' if user else 'signup'
+    if not user and not name:
+        flash("Full name required for signup.", 'danger')
+        return redirect(url_for('account'))
+    if name:
+        session['signup_name'] = name
 
-    action_type = ''
-    if user:
-        action_type = 'login'
-        # If logging in, name is optional, so we don't strictly require it.
-        # But if provided, it's ignored for login.
-        flash("Account found. Sending OTP for login.", 'info')
-    else:
-        action_type = 'signup'
-        if not name:
-            flash("Full name is required for new accounts (signup).", 'danger')
-            return redirect(url_for('account'))
-        session['signup_name'] = name # Store name for later account creation
-        flash("No account found. Sending OTP for signup.", 'info')
+    print(f"🔐 OTP for {phone} is: {otp}")  # SIMULATED
 
-    otp = str(random.randint(100000, 999999)) # 6-digit OTP
-    session['otp'] = otp
-    session['otp_phone'] = phone # Store phone number associated with this OTP
-    session['otp_timestamp'] = datetime.now().timestamp() # Store timestamp for OTP expiry
-    session['action_type'] = action_type # Store 'login' or 'signup'
-
-
-    # SIMULATED SMS SENDING: In a real app, integrate with Twilio/other SMS API here
-    print(f"--- OTP for {phone} is: {otp} (Action: {session['action_type']}) ---")
-    flash(f"An OTP has been sent to {phone}. Please check your console (for simulation).", 'info')
-
-    return render_template('verify_otp.html', phone=phone, datetime=datetime) # Ensure datetime is passed
+    return render_template('verify_otp.html', phone=phone)
 @app.route('/resend_otp', methods=['POST'])
 def resend_otp():
     phone = session.get('otp_phone')
@@ -290,29 +283,29 @@ def resend_otp():
     print(f"\n--- RESENT OTP for {phone} is: {otp} (Action: {action_type}) ---\n")
     flash(f"A new OTP has been sent to {phone}. Check your **console**.", 'info')
     return render_template('verify_otp.html', phone=phone, datetime=datetime)
-
-
+@app.route('/verify_otp', methods=['GET'])
+def verify_otp_page():
+    phone = session.get('otp_phone')
+    if not phone:
+        flash("Session expired. Please start again.", 'danger')
+        return redirect(url_for('account'))
+    return render_template('verify_otp.html', phone=phone, datetime=datetime)
 @app.route('/verify_otp', methods=['POST'])
 def verify_otp():
     user_otp = request.form.get('otp')
     phone = session.get('otp_phone')
-    stored_otp = session.get('otp')
+    stored_otp = session.get('otp_code')
     otp_timestamp = session.get('otp_timestamp')
     action_type = session.get('action_type')
-    
-    # OTP Expiry check (e.g., 5 minutes)
-    if otp_timestamp and (datetime.now().timestamp() - otp_timestamp > 300): # 300 seconds = 5 minutes
-        flash("OTP has expired. Please request a new one.", 'danger')
-        # Clear OTP session data
-        session.pop('otp', None)
-        session.pop('otp_phone', None)
-        session.pop('otp_timestamp', None)
-        session.pop('signup_name', None)
-        session.pop('action_type', None)
-        return redirect(url_for('account'))
 
     if not all([user_otp, phone, stored_otp, action_type]):
         flash("Missing verification data. Please try again from the account page.", 'danger')
+        return redirect(url_for('account'))
+
+    # Expiry check (5 min)
+    if otp_timestamp and (datetime.utcnow().timestamp() - otp_timestamp > 300):
+        flash("OTP has expired. Please request a new one.", 'danger')
+        session.clear()
         return redirect(url_for('account'))
 
     if user_otp == stored_otp:
@@ -320,64 +313,45 @@ def verify_otp():
 
         if action_type == 'signup':
             name = session.get('signup_name')
-            if user: # Double check if user was created while OTP was pending
-                flash("An account with this phone number already exists. Please log in.", 'warning')
-                # Clear OTP session data
-                session.pop('otp', None)
-                session.pop('otp_phone', None)
-                session.pop('otp_timestamp', None)
-                session.pop('signup_name', None)
-                session.pop('action_type', None)
+            if user:
+                flash("Account already exists. Please log in.", 'warning')
+                session.clear()
                 return redirect(url_for('account'))
             if not name:
-                flash("Signup failed: Name not found in session. Please start over.", 'danger')
-                # Clear OTP session data
-                session.pop('otp', None)
-                session.pop('otp_phone', None)
-                session.pop('otp_timestamp', None)
-                session.pop('signup_name', None)
-                session.pop('action_type', None)
+                flash("Signup failed. Missing name in session.", 'danger')
+                session.clear()
                 return redirect(url_for('account'))
 
-            # Create new user
             new_user = User(
                 name=name,
                 phone=phone,
-                # For simplicity, using OTP as a placeholder for password.
-                # In a real app, you might consider an initial password or password reset flow.
-                password=generate_password_hash(stored_otp) # Hashing the OTP for password field
+                password=generate_password_hash(stored_otp)
             )
             db.session.add(new_user)
             db.session.commit()
-            flash("Account created successfully!", 'success')
             session['user_id'] = new_user.id
             session['user_name'] = new_user.name
             session['is_admin'] = new_user.is_admin
-            print(f"User {new_user.name} ({new_user.phone}) signed up and logged in.")
+            flash("Account created successfully!", 'success')
 
         elif action_type == 'login':
             if not user:
-                flash("Login failed: No account found with this phone number.", 'danger')
+                flash("Login failed. No account found.", 'danger')
                 return redirect(url_for('account'))
-            # Log in the existing user
             session['user_id'] = user.id
             session['user_name'] = user.name
             session['is_admin'] = user.is_admin
             flash(f"Welcome back, {user.name}!", 'success')
-            print(f"User {user.name} ({user.phone}) logged in.")
 
-        # Clear OTP session data after successful verification
-        session.pop('otp', None)
-        session.pop('otp_phone', None)
-        session.pop('otp_timestamp', None)
-        session.pop('signup_name', None)
-        session.pop('action_type', None)
+        # Clear OTP session data after success
+        for key in ['otp_code', 'otp_phone', 'otp_expiry', 'otp_timestamp', 'signup_name', 'action_type']:
+            session.pop(key, None)
 
         return redirect(url_for('home'))
+
     else:
         flash("Invalid OTP. Please try again.", 'danger')
-        # Do NOT clear OTP data yet, allow retry on the same phone/OTP
-        return render_template('verify_otp.html', phone=phone, datetime=datetime) # Render verify page again with error
+        return redirect(url_for('verify_otp_page'))
 
 @app.route('/logout')
 @login_required
