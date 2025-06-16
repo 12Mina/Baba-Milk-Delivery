@@ -311,37 +311,22 @@ function initializeCartPageElements() {
 
 async function updateCartItemQuantity(productId, delta) {
     try {
-        // Fetch current item to determine new quantity
-        const responseItems = await fetch('/get_cart_items', {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        const dataItems = await responseItems.json();
-        const cartItems = dataItems.cart_items || [];
-        const currentItem = cartItems.find(item => String(item.id) === String(productId));
-
-        if (!currentItem) {
-            showFlashMessage('Item not found in cart to update.', 'danger');
-            return;
-        }
-
-        let newQuantity = currentItem.quantity + delta;
-
-        if (newQuantity <= 0) {
-            // If new quantity is 0 or less, confirm removal
-            await removeCartItem(productId);
-            return;
-        }
-
         const response = await fetch('/update_cart_quantity', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({ product_id: productId, quantity: newQuantity })
+            body: JSON.stringify({ product_id: productId, quantity: delta }) // Send delta
         });
 
         const data = await response.json();
+
+        if (response.status === 401) { // Handle 401 specifically
+            showFlashMessage(data.message || 'Please log in to update your cart.', 'warning');
+            setTimeout(() => window.location.href = '/account', 1500);
+            return;
+        }
 
         if (response.ok && data.success) {
             showFlashMessage(data.message, 'success');
@@ -374,6 +359,12 @@ async function removeCartItem(productId) {
         });
 
         const data = await response.json();
+
+        if (response.status === 401) {
+            showFlashMessage(data.message || 'Please log in to remove items from your cart.', 'warning');
+            setTimeout(() => window.location.href = '/account', 1500);
+            return;
+        }
 
         if (response.ok && data.success) {
             showFlashMessage(data.message, 'info');
@@ -447,6 +438,7 @@ function initializeMobileNavToggle() {
 }
 
 // Global Flask URL helper (if Flask-JS is not used)
+// This is critical for Flask.url_for in JS to work
 if (typeof Flask === 'undefined') {
     window.Flask = {
         url_for: function(endpoint, kwargs) {
