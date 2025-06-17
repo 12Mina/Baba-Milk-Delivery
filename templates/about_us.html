@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}About Baba Milk{% endblock %}
+
+{% block content %}
+<div class="about-us-container">
+    <h2>About Baba Milk</h2>
+    <section class="about-section mission">
+        <h3>Our Mission</h3>
+        <p>At Baba Milk, our mission is to deliver the purest, freshest dairy products directly from our farms to your doorstep. We are committed to fostering healthy communities by providing nutritious, high-quality milk and dairy, ensuring every sip and bite contributes to well-being.</p>
+    </section>
+
+    <section class="about-section vision">
+        <h3>Our Vision</h3>
+        <p>We envision a future where every household has easy access to farm-fresh dairy. We strive to be the most trusted and preferred dairy delivery service, known for our unwavering commitment to quality, sustainability, and customer satisfaction.</p>
+    </section>
+
+    <section class="about-section values">
+        <h3>Our Values</h3>
+        <ul>
+            <li><strong>Quality:</strong> We never compromise on the quality and freshness of our products.</li>
+            <li><strong>Integrity:</strong> We operate with transparency and honesty in all our dealings.</li>
+            <li><strong>Sustainability:</strong> We are dedicated to environmentally friendly farming practices.</li>
+            <li><strong>Customer Focus:</strong> Your health and satisfaction are at the heart of everything we do.</li>
+            <li><strong>Community:</strong> We believe in supporting local farmers and strengthening our community bonds.</li>
+        </ul>
+    </section>
+
+    <section class="about-section history">
+        <h3>Our Story</h3>
+        <p>Founded in {{ datetime.now().year - 5 }}, Baba Milk started with a simple idea: to make fresh, wholesome dairy accessible to everyone, bypassing middlemen and ensuring farm-to-table freshness. What began as a small family farm has grown into a trusted name, serving countless homes with the goodness of nature. We are proud of our heritage and excited to continue growing with you.</p>
+    </section>
+
+    <section class="about-section contact-info">
+        <h3>Contact Us</h3>
+        <p>Have questions or feedback? We'd love to hear from you!</p>
+        <p>Email: <a href="mailto:info@babamilk.com">info@babamilk.com</a></p>
+        <p>Phone: <a href="tel:+251964660512">+251 964 66 0512</a></p>
+        <p>Address: Our Farm, Halaba Kulito, SNN, Ethiopia</p>
+    </section>
+</div>
+{% endblock %}

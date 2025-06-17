@@ -9,14 +9,19 @@ import functools
 from flask_migrate import Migrate
 import random 
 from twilio.rest import Client
+from twilio.base.exceptions import TwilioRestException # Import Twilio exception for error handling
 from dotenv import load_dotenv
+
 load_dotenv()
 
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER")
-
-twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+TWILIO_PHONE_NUMBER = os.environ.get("+199034653116") 
+# Initialize Twilio client only if credentials are provided
+if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+    twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+else:
+    twilio_client = None # Set to None if credentials are not found, so we can check later
 
 # --- Flask App Setup ---
 app = Flask(__name__)
@@ -225,11 +230,14 @@ def home():
     yogurt_products = Product.query.filter_by(category='yogurt').all()
     cheese_products = Product.query.filter_by(category='cheese').all()
     butter_products = Product.query.filter_by(category='butter').all()
+    # Also fetch all products for the search feature to be displayed initially
+    all_products = Product.query.all() 
     return render_template('home.html',
                            milk_products=milk_products,
                            yogurt_products=yogurt_products,
                            cheese_products=cheese_products,
                            butter_products=butter_products,
+                           all_products=all_products, # Pass all products for initial display and search
                            datetime=datetime)
 
 @app.route('/account', methods=['GET'])
@@ -239,18 +247,28 @@ def account():
 
 @app.route('/send_otp', methods=['POST'])
 def send_otp():
-    phone = request.form.get('phone')
+    phone_raw = request.form.get('phone')
     name = request.form.get('name')
 
-    if not phone or not phone.isdigit() or len(phone) < 9:
-        flash("Enter a valid phone number.", 'danger')
+    if not phone_raw or not phone_raw.replace('+', '').isdigit() or len(phone_raw.replace('+', '')) < 9:
+        flash("Enter a valid phone number. It should contain only digits and optional '+' and be at least 9 digits long.", 'danger')
         return redirect(url_for('account'))
 
-    if not phone.startswith('+'):
-        phone = '+91' + phone  # adjust for your country
+    # Ensure phone number is in E.164 format (e.g., +251912345678).
+    # If it starts with 09 and is 10 digits (common for local Ethiopian numbers), prepend +251
+    # Otherwise, assume it's already an international format if it starts with '+'
+    # or requires a default country code if it doesn't start with 0 or +
+    if phone_raw.startswith('09') and len(phone_raw) == 10:
+        phone = '+251' + phone_raw[1:] # Convert 09xxxxxxxx to +2519xxxxxxxx
+    elif not phone_raw.startswith('+'):
+        # Fallback for non-Ethiopian numbers or other formats: assume a default country code
+        # You might need a more sophisticated library for real-world international number parsing.
+        phone = '+251' + phone_raw # Default to Ethiopia if no '+' provided
+    else:
+        phone = phone_raw # Already in a proper international format
 
     otp = str(random.randint(100000, 999999))
-    session['otp'] = otp
+    session['otp_code'] = otp # CORRECTED: Store as 'otp_code' for verification
     session['otp_phone'] = phone
     session['otp_timestamp'] = datetime.now().timestamp()
 
@@ -262,9 +280,29 @@ def send_otp():
     if name:
         session['signup_name'] = name
 
-    print(f"🔐 OTP for {phone} is: {otp}")  # SIMULATED
+    print(f"🔐 OTP for {phone} is: {otp}")  # SIMULATED / DEBUGGING
+
+    # --- Twilio SMS Sending (Uncomment and configure if live Twilio is used) ---
+    if twilio_client and TWILIO_PHONE_NUMBER:
+        try:
+            message = twilio_client.messages.create(
+                to=phone,
+                from_=TWILIO_PHONE_NUMBER,
+                body=f"Your Baba Milk App verification code is: {otp}"
+            )
+            print(f"Twilio message SID: {message.sid}")
+            flash(f"An OTP has been sent to {phone}.", 'info')
+        except TwilioRestException as e:
+            app.logger.error(f"Twilio error sending OTP to {phone}: {e}")
+            flash("Failed to send OTP. Please try again or check your phone number.", 'danger')
+        except Exception as e:
+            app.logger.error(f"General error sending OTP to {phone}: {e}")
+            flash("An unexpected error occurred while sending OTP. Please try again.", 'danger')
+    else:
+        flash(f"OTP simulation: {otp}. Please check your console. (Twilio not configured)", 'info')
 
     return render_template('verify_otp.html', phone=phone)
+
 @app.route('/resend_otp', methods=['POST'])
 def resend_otp():
     phone = session.get('otp_phone')
@@ -276,13 +314,31 @@ def resend_otp():
 
     # Generate a new OTP
     otp = str(random.randint(100000, 999999))
-    session['otp'] = otp
+    session['otp_code'] = otp # CORRECTED: Store as 'otp_code' for consistency
     session['otp_timestamp'] = datetime.now().timestamp() # Update timestamp for new OTP
 
-    # --- SIMULATED SMS SENDING ---
-    print(f"\n--- RESENT OTP for {phone} is: {otp} (Action: {action_type}) ---\n")
-    flash(f"A new OTP has been sent to {phone}. Check your **console**.", 'info')
+    # --- Twilio SMS Sending (Uncomment and configure if live Twilio is used) ---
+    if twilio_client and TWILIO_PHONE_NUMBER:
+        try:
+            message = twilio_client.messages.create(
+                to=phone,
+                from_=TWILIO_PHONE_NUMBER,
+                body=f"Your new Baba Milk App verification code is: {otp}"
+            )
+            print(f"Twilio message SID (resend): {message.sid}")
+            flash(f"A new OTP has been sent to {phone}.", 'info')
+        except TwilioRestException as e:
+            app.logger.error(f"Twilio error resending OTP to {phone}: {e}")
+            flash("Failed to resend OTP. Please try again or check your phone number.", 'danger')
+        except Exception as e:
+            app.logger.error(f"General error resending OTP to {phone}: {e}")
+            flash("An unexpected error occurred while resending OTP. Please try again.", 'danger')
+    else:
+        print(f"\n--- RESENT OTP for {phone} is: {otp} (Action: {action_type}) ---\n")
+        flash(f"A new OTP has been sent to {phone}. Check your **console**.", 'info')
+        
     return render_template('verify_otp.html', phone=phone, datetime=datetime)
+
 @app.route('/verify_otp', methods=['GET'])
 def verify_otp_page():
     phone = session.get('otp_phone')
@@ -290,11 +346,12 @@ def verify_otp_page():
         flash("Session expired. Please start again.", 'danger')
         return redirect(url_for('account'))
     return render_template('verify_otp.html', phone=phone, datetime=datetime)
+
 @app.route('/verify_otp', methods=['POST'])
 def verify_otp():
     user_otp = request.form.get('otp')
     phone = session.get('otp_phone')
-    stored_otp = session.get('otp_code')
+    stored_otp = session.get('otp_code') # This is now correctly matching where it's stored
     otp_timestamp = session.get('otp_timestamp')
     action_type = session.get('action_type')
 
@@ -303,7 +360,7 @@ def verify_otp():
         return redirect(url_for('account'))
 
     # Expiry check (5 min)
-    if otp_timestamp and (datetime.utcnow().timestamp() - otp_timestamp > 300):
+    if otp_timestamp and (datetime.now().timestamp() - otp_timestamp > 300): # Use datetime.now() for consistency
         flash("OTP has expired. Please request a new one.", 'danger')
         session.clear()
         return redirect(url_for('account'))
@@ -325,7 +382,7 @@ def verify_otp():
             new_user = User(
                 name=name,
                 phone=phone,
-                password=generate_password_hash(stored_otp)
+                password=generate_password_hash(stored_otp) # Store hashed OTP
             )
             db.session.add(new_user)
             db.session.commit()
@@ -336,21 +393,24 @@ def verify_otp():
 
         elif action_type == 'login':
             if not user:
-                flash("Login failed. No account found.", 'danger')
+                flash("Login failed. No account found for this phone number.", 'danger')
                 return redirect(url_for('account'))
+            # For login, we are checking the entered OTP against the one sent.
+            # No password hash comparison needed if OTP is the only login mechanism.
             session['user_id'] = user.id
             session['user_name'] = user.name
             session['is_admin'] = user.is_admin
             flash(f"Welcome back, {user.name}!", 'success')
 
         # Clear OTP session data after success
-        for key in ['otp_code', 'otp_phone', 'otp_expiry', 'otp_timestamp', 'signup_name', 'action_type']:
+        for key in ['otp_code', 'otp_phone', 'otp_timestamp', 'signup_name', 'action_type']:
             session.pop(key, None)
 
         return redirect(url_for('home'))
 
     else:
         flash("Invalid OTP. Please try again.", 'danger')
+        # Do not clear session here so user can retry OTP
         return redirect(url_for('verify_otp_page'))
 
 @app.route('/logout')
@@ -534,17 +594,25 @@ def cart():
 def checkout():
     # This route is hit from the cart page after confirming delivery details
     # No longer using hidden total_amount/cart_data from form, calculate on server-side
-    delivery_name = request.form.get('delivery_name')
+    # The 'name' field is actually for the delivery recipient, not user's full name.
+    # We'll use the logged-in user's name if not provided.
+    delivery_name = request.form.get('delivery_name', session.get('user_name', '')) # Get delivery name, default to user's name
     delivery_phone = request.form.get('delivery_phone')
     delivery_address = request.form.get('delivery_address')
 
-    if not all([delivery_name, delivery_phone, delivery_address]):
-        flash("Missing delivery details. Please fill all fields.", 'danger')
+    if not all([delivery_phone, delivery_address]): # delivery_name can be optional or default to user's name
+        flash("Missing delivery phone or address. Please fill all fields.", 'danger')
         return redirect(url_for('cart'))
 
-    if not delivery_phone.isdigit() or len(delivery_phone) < 9:
-        flash("Please enter a valid phone number (digits only, at least 9 digits).", 'danger')
+    if not delivery_phone.replace('+', '').isdigit() or len(delivery_phone.replace('+', '')) < 9:
+        flash("Please enter a valid phone number (digits only, at least 9 digits, optional leading '+').", 'danger')
         return redirect(url_for('cart'))
+        
+    # Ensure delivery phone is in E.164 format here as well
+    if delivery_phone.startswith('09') and len(delivery_phone) == 10:
+        delivery_phone = '+251' + delivery_phone[1:] # Convert 09xxxxxxxx to +2519xxxxxxxx
+    elif not delivery_phone.startswith('+'):
+        delivery_phone = '+251' + delivery_phone # Default to Ethiopia if no '+' provided
 
     # Calculate total and get cart items from session (server-side for security)
     cart_items_session = session.get('cart', {})
@@ -631,15 +699,27 @@ def finalize_order():
 
     if payment_method == 'telebirr':
         payment_detail_info['phone'] = request.form.get('telebirr_phone')
-        if not payment_detail_info['phone'] or not payment_detail_info['phone'].isdigit():
+        # Validate and format phone number for payment details
+        if not payment_detail_info['phone'] or not payment_detail_info['phone'].replace('+', '').isdigit():
             flash('Valid Telebirr phone number is required.', 'danger')
             return redirect(url_for('payment'))
+        if payment_detail_info['phone'].startswith('09') and len(payment_detail_info['phone']) == 10:
+            payment_detail_info['phone'] = '+251' + payment_detail_info['phone'][1:]
+        elif not payment_detail_info['phone'].startswith('+'):
+            payment_detail_info['phone'] = '+251' + payment_detail_info['phone']
+
         status = 'pending_payment_telebirr'
     elif payment_method == 'cbebirr':
         payment_detail_info['phone'] = request.form.get('cbebirr_phone')
-        if not payment_detail_info['phone'] or not payment_detail_info['phone'].isdigit():
+        # Validate and format phone number for payment details
+        if not payment_detail_info['phone'] or not payment_detail_info['phone'].replace('+', '').isdigit():
             flash('Valid CBE Birr phone number is required.', 'danger')
             return redirect(url_for('payment'))
+        if payment_detail_info['phone'].startswith('09') and len(payment_detail_info['phone']) == 10:
+            payment_detail_info['phone'] = '+251' + payment_detail_info['phone'][1:]
+        elif not payment_detail_info['phone'].startswith('+'):
+            payment_detail_info['phone'] = '+251' + payment_detail_info['phone']
+
         status = 'pending_payment_cbebirr'
     elif payment_method != 'cash_on_delivery':
         flash('Invalid payment method selected.', 'danger')
@@ -763,24 +843,82 @@ def update_order_status():
 
     return redirect(url_for('admin'))
 
+# --- New Search Route ---
+@app.route('/search_products', methods=['GET'])
+def search_products():
+    query = request.args.get('query', '').strip()
+    if not query:
+        return jsonify(products=[]), 200 # Return empty if no query
+
+    # Perform a case-insensitive search on product name or description
+    search_pattern = f"%{query}%"
+    products = Product.query.filter(
+        (Product.name.ilike(search_pattern)) |
+        (Product.description.ilike(search_pattern))
+    ).all()
+
+    # Format products for JSON response
+    search_results = []
+    for product in products:
+        search_results.append({
+            'id': product.id,
+            'name': product.name,
+            'price': product.price,
+            'image_path': url_for('static', filename='images/' + product.image_path),
+            'description': product.description,
+            'category': product.category
+        })
+    
+    return jsonify(products=search_results), 200
+
+# --- New About Us Route ---
+@app.route('/about_us')
+def about_us():
+    return render_template('about_us.html', datetime=datetime)
+
+
 # --- Data Population (for initial setup) ---
 products_data = [
-    {"name": "Fresh Cow Milk", "category": "milk", "price": 80.00, "image_suffix": 1, "description": "Pure, pasteurized cow milk."},
-    {"name": "Organic Whole Milk", "category": "milk", "price": 95.00, "image_suffix": 2, "description": "Sourced from organic farms, rich in nutrients."},
-    {"name": "Low-Fat Milk", "category": "milk", "price": 70.00, "image_suffix": 3, "description": "Healthy choice with reduced fat content."},
-    {"name": "Lactose-Free Milk", "category": "milk", "price": 110.00, "image_suffix": 4, "description": "Easy to digest, all the goodness without lactose."},
-    
-    {"name": "Plain Yogurt", "category": "yogurt", "price": 50.00, "image_suffix": 5, "description": "Creamy and natural plain yogurt."},
-    {"name": "Strawberry Yogurt", "category": "yogurt", "price": 65.00, "image_suffix": 6, "description": "Sweetened with real strawberries."},
-    {"name": "Greek Yogurt", "category": "yogurt", "price": 85.00, "image_suffix": 7, "description": "Thick, high-protein Greek yogurt."},
-    
-    {"name": "Cheddar Cheese", "category": "cheese", "price": 150.00, "image_suffix": 8, "description": "Classic sharp cheddar cheese block."},
-    {"name": "Mozzarella Cheese", "category": "cheese", "price": 130.00, "image_suffix": 9, "description": "Perfect for pizzas and pastas, melts beautifully."},
-    {"name": "Feta Cheese", "category": "cheese", "price": 120.00, "image_suffix": 10, "description": "Tangy and salty, ideal for salads."},
-    
-    {"name": "Salted Butter", "category": "butter", "price": 90.00, "image_suffix": 11, "description": "Rich and creamy salted butter."},
-    {"name": "Unsalted Butter", "category": "butter", "price": 90.00, "image_suffix": 12, "description": "Pure, unsalted butter for baking and cooking."},
+    {"name": "Fresh Cow Milk (1L)", "category": "milk", "price": 80.00, "image_suffix": 1, "description": "Pure, pasteurized cow milk, delivered fresh daily."},
+    {"name": "Organic Whole Milk (1L)", "category": "milk", "price": 95.00, "image_suffix": 2, "description": "Sourced from organic farms, rich in nutrients and flavor."},
+    {"name": "Low-Fat Milk (1L)", "category": "milk", "price": 70.00, "image_suffix": 3, "description": "A healthy choice with reduced fat content, perfect for everyday use."},
+    {"name": "Lactose-Free Milk (1L)", "category": "milk", "price": 110.00, "image_suffix": 4, "description": "Easy to digest, all the goodness of milk without lactose."},
+    {"name": "Skim Milk (1L)", "category": "milk", "price": 65.00, "image_suffix": 13, "description": "Virtually fat-free, ideal for health-conscious individuals."},
+    {"name": "Goat Milk (500ml)", "category": "milk", "price": 120.00, "image_suffix": 14, "description": "Nutrient-rich goat milk, a great alternative for sensitive stomachs."},
+    {"name": "Almond Milk (1L)", "category": "milk", "price": 100.00, "image_suffix": 15, "description": "Dairy-free almond milk, perfect for vegans and those with intolerances."},
+    {"name": "Soy Milk (1L)", "category": "milk", "price": 90.00, "image_suffix": 16, "description": "Plant-based soy milk, high in protein and versatility."},
+    {"name": "Chocolate Milk (500ml)", "category": "milk", "price": 75.00, "image_suffix": 17, "description": "Rich and delicious chocolate milk, a treat for all ages."},
+    {"name": "Strawberry Milk (500ml)", "category": "milk", "price": 75.00, "image_suffix": 18, "description": "Sweet strawberry-flavored milk, a fun drink for kids."},
+
+    {"name": "Plain Yogurt (500g)", "category": "yogurt", "price": 50.00, "image_suffix": 5, "description": "Creamy and natural plain yogurt, great as a base or on its own."},
+    {"name": "Strawberry Yogurt (500g)", "category": "yogurt", "price": 65.00, "image_suffix": 6, "description": "Sweetened with real strawberries, a delightful snack."},
+    {"name": "Greek Yogurt (500g)", "category": "yogurt", "price": 85.00, "image_suffix": 7, "description": "Thick, high-protein Greek yogurt, perfect for a healthy breakfast."},
+    {"name": "Vanilla Bean Yogurt (500g)", "category": "yogurt", "price": 70.00, "image_suffix": 19, "description": "Infused with natural vanilla bean for a classic flavor."},
+    {"name": "Mango Yogurt (500g)", "category": "yogurt", "price": 75.00, "image_suffix": 20, "description": "Exotic mango-flavored yogurt, a tropical delight."},
+    {"name": "Blueberry Yogurt (500g)", "category": "yogurt", "price": 70.00, "image_suffix": 21, "description": "Tangy and sweet, packed with fresh blueberries."},
+    {"name": "Probiotic Yogurt (500g)", "category": "yogurt", "price": 90.00, "image_suffix": 22, "description": "Boost your gut health with this active probiotic yogurt."},
+    {"name": "Coconut Yogurt (500g)", "category": "yogurt", "price": 95.00, "image_suffix": 23, "description": "Dairy-free coconut yogurt, creamy and naturally sweet."},
+    {"name": "Honey Yogurt (500g)", "category": "yogurt", "price": 60.00, "image_suffix": 24, "description": "Sweetened with pure honey, a wholesome and natural option."},
+    {"name": "Peach Yogurt (500g)", "category": "yogurt", "price": 70.00, "image_suffix": 25, "description": "Delicious peach-flavored yogurt, smooth and refreshing."},
+
+    {"name": "Cheddar Cheese (200g)", "category": "cheese", "price": 150.00, "image_suffix": 8, "description": "Classic sharp cheddar cheese block, aged to perfection."},
+    {"name": "Mozzarella Cheese (200g)", "category": "cheese", "price": 130.00, "image_suffix": 9, "description": "Perfect for pizzas and pastas, melts beautifully and stretches."},
+    {"name": "Feta Cheese (150g)", "category": "cheese", "price": 120.00, "image_suffix": 10, "description": "Tangy and salty, ideal for salads and Mediterranean dishes."},
+    {"name": "Gouda Cheese (200g)", "category": "cheese", "price": 160.00, "image_suffix": 26, "description": "Semi-hard cheese with a mild, nutty flavor."},
+    {"name": "Cream Cheese (250g)", "category": "cheese", "price": 100.00, "image_suffix": 27, "description": "Smooth and spreadable, great for bagels and cooking."},
+    {"name": "Parmesan Cheese (100g)", "category": "cheese", "price": 180.00, "image_suffix": 28, "description": "Hard, granular cheese perfect for grating over pasta."},
+    {"name": "Ricotta Cheese (250g)", "category": "cheese", "price": 90.00, "image_suffix": 29, "description": "Soft and creamy, ideal for Italian desserts and savory dishes."},
+    {"name": "Cottage Cheese (250g)", "category": "cheese", "price": 80.00, "image_suffix": 30, "description": "High in protein, a versatile and healthy snack."},
+    {"name": "Swiss Cheese (200g)", "category": "cheese", "price": 140.00, "image_suffix": 31, "description": "Distinctive holes and a mild, nutty taste."},
+    {"name": "Provolone Cheese (200g)", "category": "cheese", "price": 135.00, "image_suffix": 32, "description": "Versatile cheese, great for sandwiches and melting."},
+
+    {"name": "Salted Butter (250g)", "category": "butter", "price": 90.00, "image_suffix": 11, "description": "Rich and creamy salted butter, perfect for spreading."},
+    {"name": "Unsalted Butter (250g)", "category": "butter", "price": 90.00, "image_suffix": 12, "description": "Pure, unsalted butter for baking and cooking, allows flavor control."},
+    {"name": "Ghee (Clarified Butter, 500g)", "category": "butter", "price": 200.00, "image_suffix": 33, "description": "Traditional clarified butter, rich flavor and high smoke point."},
+    {"name": "Garlic Herb Butter (150g)", "category": "butter", "price": 110.00, "image_suffix": 34, "description": "Infused with garlic and herbs, perfect for steaks or bread."},
+    {"name": "Whipped Butter (200g)", "category": "butter", "price": 85.00, "image_suffix": 35, "description": "Light and airy whipped butter, easy to spread."},
 ]
+
 
 @app.cli.command('init-db')
 def init_db_command():
@@ -792,8 +930,9 @@ def init_db_command():
         # Check if products already exist before populating
         if not Product.query.first():
             print("Products missing. Populating...")
-            for p_data in products_data:
-                image_name = f"product{p_data['image_suffix']}.png" # Assuming images are named product1.png, product2.png etc.
+            for i, p_data in enumerate(products_data):
+                # Using image_suffix if provided, otherwise generate a placeholder or default
+                image_name = f"product{p_data.get('image_suffix', i+1)}.png" 
                 new_product = Product(
                     name=p_data['name'],
                     category=p_data['category'],
@@ -813,15 +952,15 @@ def init_db_command():
             admin_user = User(
                 name="Admin",
                 lastname="User",
-                phone="0911223344",
+                phone="+251911223344", # Changed to E.164 format
                 email="admin@example.com",
-                password=generate_password_hash("adminpass"), # You can set a default strong password or use OTP for admin too
+                password=generate_password_hash("adminpass"),
                 is_admin=True,
                 address="Admin Office, Addis Ababa"
             )
             db.session.add(admin_user)
             db.session.commit()
-            print("Default admin user created (phone: 0911223344, pass: adminpass).")
+            print("Default admin user created (phone: +251911223344, pass: adminpass).")
         else:
             print("Admin user already exists. Skipping creation.")
 

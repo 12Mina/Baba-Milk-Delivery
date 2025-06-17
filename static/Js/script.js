@@ -1,4 +1,4 @@
-// ======================== 🚀 Initialize ========================
+// ======================== 🚀 Initialize ========================\
 document.addEventListener('DOMContentLoaded', () => {
     // Display flash messages that might have been rendered by Flask on page load
     displayFlaskFlashMessages();
@@ -23,392 +23,276 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // The account.html page now uses direct Flask form submission for OTP flow.
-    // No specific JS initialization needed for the main account page div directly.
     const accountPageContainer = document.getElementById('account-page-container');
     if (body.contains(accountPageContainer)) {
         console.log("Account page now handles OTP flow via Flask form submissions.");
-        // If you still have password show/hide, it needs to be inline or in a separate specific JS for account.html
-        // For this updated flow, passwords are not directly entered on account.html
     }
 
-
-    // Initialize admin panel (placeholder)
+    // Initialize admin panel functions if on admin page
     if (body.contains(document.getElementById('admin-panel-container'))) {
         initializeAdminPanel();
     }
 
-    // Track Button placeholder - Ensure this is correctly linked in your HTML
-    const trackButton = document.querySelector('.track-button');
-    if (trackButton) {
-        trackButton.addEventListener('click', (e) => {
-            e.preventDefault(); // Prevent default link behavior if it's just a placeholder
-            showFlashMessage('📦 Tracking feature is coming soon!', 'info');
-        });
-    }
-
-    // NEW: Initialize Mobile Navigation Toggle (already in your previous script.js, just ensuring it's called)
+    // Initialize mobile navigation toggle
     initializeMobileNavToggle();
-    // ----------------------------------------
+
+    // Initialize search functionality
+    initializeProductSearch();
 });
 
-
-// ======================== ✨ Flash Message Utilities ========================
-
-// This function is for client-side triggered flash messages
-function showFlashMessage(message, type = 'info') {
-    const flashContainer = document.getElementById('flash-message-container');
-    if (!flashContainer) {
-        console.error("Flash message container not found!");
+// ======================== 💬 Flash Messages ========================
+function displayFlaskFlashMessages() {
+    const flashDataScript = document.getElementById('flash-messages-data');
+    if (!flashDataScript) {
         return;
     }
-    const flashDiv = document.createElement('div');
-    flashDiv.className = `alert alert-${type}`;
-    flashDiv.textContent = message;
-    flashContainer.appendChild(flashDiv);
 
-    // Auto-hide messages
-    setTimeout(() => {
-        flashDiv.remove();
-    }, 3000); // Messages disappear after 3 seconds
-}
-
-// This function handles Flask's server-side flashed messages
-function displayFlaskFlashMessages() {
-    const flashMessagesDataElement = document.getElementById('flash-messages-data');
-    if (flashMessagesDataElement) {
-        try {
-            // Parse the JSON string from the hidden script tag
-            const flashedMessages = JSON.parse(flashMessagesDataElement.textContent || '[]');
-            
-            flashedMessages.forEach(message => {
-                const [category, text] = message; // Flask sends [category, message]
-                showFlashMessage(text, category);
-            });
-
-            // Clear the script tag content after displaying to prevent re-display on back/forward
-            flashMessagesDataElement.textContent = '[]';
-
-        } catch (error) {
-            console.error("Error parsing flash messages:", error);
+    try {
+        const messages = JSON.parse(flashDataScript.textContent);
+        const container = document.getElementById('flash-message-container');
+        if (!container) {
+            console.warn("Flash message container not found.");
+            return;
         }
+
+        messages.forEach(([category, message]) => {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert ${category}`;
+            alertDiv.textContent = message;
+            container.appendChild(alertDiv);
+
+            // Automatically remove the message after 5 seconds with fade-out
+            setTimeout(() => {
+                alertDiv.style.opacity = '0';
+                alertDiv.style.transform = 'translateY(-20px)';
+                alertDiv.addEventListener('transitionend', () => alertDiv.remove());
+            }, 5000); // 5 seconds
+        });
+    } catch (e) {
+        console.error("Error parsing flash messages:", e);
     }
 }
 
-
-// ======================== 🛒 Cart Functionality ========================
-
-// Function to update cart count displayed in the header
-async function updateCartCountInHeader() {
-    const cartCountSpan = document.getElementById('cart-count');
-    if (cartCountSpan) {
-        try {
-            const response = await fetch('/get_cart_count');
-            if (response.ok) {
-                const data = await response.json();
-                cartCountSpan.textContent = data.cart_count > 0 ? data.cart_count : '0'; // Display 0 if empty
-            } else {
-                console.error('Failed to fetch cart count.');
-                cartCountSpan.textContent = '0';
+// ======================== 🛒 Cart Management ========================
+function updateCartCountInHeader() {
+    fetch('/get_cart_count')
+        .then(response => response.json())
+        .then(data => {
+            const cartCountElement = document.getElementById('cart-count');
+            if (cartCountElement) {
+                cartCountElement.textContent = data.cart_count || '0';
+                cartCountElement.style.display = data.cart_count > 0 ? 'block' : 'none';
             }
-        } catch (error) {
-            console.error('Error fetching cart count:', error);
-            cartCountSpan.textContent = '0';
-        }
-    }
+        })
+        .catch(error => console.error('Error fetching cart count:', error));
 }
 
-// Initialize "Add to Cart" buttons
 function initializeAddToCartButtons() {
     const addToCartButtons = document.querySelectorAll('.add-to-cart-btn');
     addToCartButtons.forEach(button => {
         button.addEventListener('click', async (event) => {
             const productId = event.target.dataset.productId;
             const productName = event.target.dataset.name;
-            const quantity = 1; // Default quantity for initial add
+            const productPrice = event.target.dataset.price;
 
-            await addToCart(productId, quantity, productName);
+            try {
+                const response = await fetch('/add_to_cart', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ product_id: productId })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    displayFlashMessage('success', data.message);
+                    updateCartCountInHeader();
+                } else if (response.status === 401) {
+                    displayFlashMessage('warning', data.message || 'Please log in to add items to your cart.');
+                    // Optionally redirect to login or show login modal
+                    window.location.href = Flask.url_for('account');
+                } else {
+                    displayFlashMessage('danger', data.message || 'Failed to add item to cart.');
+                }
+            } catch (error) {
+                console.error('Error adding to cart:', error);
+                displayFlashMessage('danger', 'An unexpected error occurred. Please try again.');
+            }
         });
     });
 }
 
-
-async function addToCart(productId, quantity, productName = 'item') {
-    try {
-        const response = await fetch('/add_to_cart', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest' // Crucial for Flask to identify AJAX
-            },
-            body: JSON.stringify({ product_id: productId, quantity: quantity })
-        });
-
-        const data = await response.json();
-
-        if (response.status === 401) { // Specifically handle 401 for login required
-            showFlashMessage(data.message || 'Please log in to add items to your cart.', 'warning');
-            setTimeout(() => window.location.href = '/account', 1500); // Redirect to login
-            return;
-        }
-
-        if (response.ok && data.success) { // Server returned 200-299 and success:true
-            showFlashMessage(data.message || `${productName} added to cart!`, 'success');
-            updateCartCountInHeader(); 
-            if (document.body.contains(document.getElementById('cart-page-container'))) {
-                renderCartItems(); // Re-render cart if on the cart page
-            }
-        } else { // Server returned non-200 or success:false
-            showFlashMessage(data.message || data.error || 'Failed to add item to cart.', 'danger');
-        }
-    } catch (error) {
-        console.error("Network or parsing error adding to cart:", error);
-        showFlashMessage(`Error: Could not add ${productName} to cart. Check your connection.`, 'danger');
-    }
-}
-
-
-// ======================== 🧾 Cart Page Rendering & Interaction ========================
-
-async function renderCartItems() {
-    const cartPageContainer = document.getElementById('cart-page-container');
-    if (!cartPageContainer) return; // Not on the cart page
-
+function renderCartItems() {
     const cartItemsList = document.getElementById('cart-items-list');
-    const cartSubtotalElement = document.getElementById('cart-subtotal');
-    const cartTotalAmountElement = document.getElementById('cart-total-amount'); // Assuming this exists for total
+    const cartTotalAmountSpan = document.getElementById('cart-total-amount');
+    const cartSubtotalSpan = document.getElementById('cart-subtotal');
     const emptyCartMessage = document.getElementById('empty-cart-message');
     const cartSummarySection = document.getElementById('cart-summary-section');
     const totalAmountHiddenInput = document.getElementById('total-amount-hidden');
     const cartDataHiddenInput = document.getElementById('cart-data-hidden');
 
-    if (!cartItemsList || !cartSubtotalElement || !cartTotalAmountElement || !emptyCartMessage || !cartSummarySection || !totalAmountHiddenInput || !cartDataHiddenInput) {
-        console.error("Missing essential cart page elements. Check your cart.html structure.");
-        return;
-    }
+    if (!cartItemsList || !cartTotalAmountSpan) return;
 
-    try {
-        const response = await fetch('/get_cart_items', {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        
-        const data = await response.json();
-        
-        // Handle login required specifically for cart page load
-        if (response.status === 401) {
-            showFlashMessage(data.message || "Please log in to view your cart items.", "warning");
-            emptyCartMessage.style.display = 'block';
-            cartSummarySection.style.display = 'none';
-            cartItemsList.innerHTML = ''; // Clear any visible items
-            cartSubtotalElement.textContent = '0.00';
-            cartTotalAmountElement.textContent = '0.00';
-            totalAmountHiddenInput.value = '0.00';
-            cartDataHiddenInput.value = '[]';
-            updateCartCountInHeader(); // Ensure header reflects empty cart
-            setTimeout(() => window.location.href = '/account', 1500);
-            return;
-        }
+    fetch('/get_cart_items')
+        .then(response => {
+            if (response.status === 401) {
+                // User not logged in, show empty cart message
+                emptyCartMessage.style.display = 'block';
+                cartSummarySection.style.display = 'none';
+                displayFlashMessage('info', 'Please log in to view your cart.');
+                return { cart_items: [] }; // Return empty data so the rest of the function can proceed safely
+            }
+            return response.json();
+        })
+        .then(data => {
+            let totalAmount = 0;
+            cartItemsList.innerHTML = ''; // Clear existing items
 
-        const cartItems = data.cart_items || []; // Ensure it's an array
-
-        cartItemsList.innerHTML = '';
-        let subtotal = 0;
-        const formattedCartData = []; // For the hidden input to Flask
-
-        if (cartItems.length === 0) {
-            emptyCartMessage.style.display = 'block';
-            cartSummarySection.style.display = 'none';
-        } else {
-            emptyCartMessage.style.display = 'none';
-            cartSummarySection.style.display = 'block';
-
-            cartItems.forEach(item => {
-                const itemTotal = item.price * item.quantity;
-                subtotal += itemTotal;
-
-                const cartItemDiv = document.createElement('div');
-                cartItemDiv.className = 'cart-item';
-                cartItemDiv.innerHTML = `
-                    <img src="${item.image_url}" alt="${item.name}" class="cart-item-img">
-                    <div class="item-details">
-                        <h3>${item.name}</h3>
-                        <p class="item-price">ETB ${item.price.toFixed(2)}</p>
-                        <p>Total: ETB ${itemTotal.toFixed(2)}</p>
-                    </div>
-                    <div class="quantity-controls">
-                        <button data-product-id="${item.id}" data-action="decrease">-</button>
-                        <span>${item.quantity}</span>
-                        <button data-product-id="${item.id}" data-action="increase">+</button>
-                    </div>
-                    <button class="remove-item-btn" data-product-id="${item.id}">Remove</button>
-                `;
-                cartItemsList.appendChild(cartItemDiv);
-
-                formattedCartData.push({ // Store simplified data for Flask
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity
+            if (data.cart_items && data.cart_items.length > 0) {
+                data.cart_items.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'cart-item';
+                    itemDiv.innerHTML = `
+                        <img src="${item.image_url}" alt="${item.name}" class="cart-item-img">
+                        <div class="item-details">
+                            <h3>${item.name}</h3>
+                            <p class="item-price">ETB ${(item.price * item.quantity).toFixed(2)}</p>
+                        </div>
+                        <div class="quantity-controls">
+                            <button class="decrease-quantity-btn" data-product-id="${item.id}">-</button>
+                            <span>${item.quantity}</span>
+                            <button class="increase-quantity-btn" data-product-id="${item.id}">+</button>
+                        </div>
+                        <button class="remove-item-btn" data-product-id="${item.id}">Remove</button>
+                    `;
+                    cartItemsList.appendChild(itemDiv);
+                    totalAmount += item.price * item.quantity;
                 });
-            });
-        }
+                emptyCartMessage.style.display = 'none';
+                cartSummarySection.style.display = 'block';
+            } else {
+                emptyCartMessage.style.display = 'block';
+                cartSummarySection.style.display = 'none';
+            }
 
-        cartSubtotalElement.textContent = subtotal.toFixed(2);
-        cartTotalAmountElement.textContent = subtotal.toFixed(2); // Assuming total is same as subtotal for now
-        totalAmountHiddenInput.value = subtotal.toFixed(2);
-        cartDataHiddenInput.value = JSON.stringify(formattedCartData);
-
-        updateCartCountInHeader();
-
-    } catch (err) {
-        console.error('Failed to fetch or render cart items:', err);
-        showFlashMessage('Failed to load cart items. Please try refreshing the page.', 'danger');
-        emptyCartMessage.style.display = 'block';
-        cartSummarySection.style.display = 'none';
-    }
+            cartTotalAmountSpan.textContent = totalAmount.toFixed(2);
+            cartSubtotalSpan.textContent = totalAmount.toFixed(2); // For now, subtotal is same as total
+            
+            // Update hidden inputs for form submission
+            if (totalAmountHiddenInput) {
+                totalAmountHiddenInput.value = totalAmount.toFixed(2);
+            }
+            if (cartDataHiddenInput) {
+                cartDataHiddenInput.value = JSON.stringify(data.cart_items);
+            }
+            
+            // Re-attach event listeners after rendering
+            initializeCartPageElements();
+        })
+        .catch(error => console.error('Error fetching cart items:', error));
 }
 
 function initializeCartPageElements() {
-    const cartItemsList = document.getElementById('cart-items-list');
-    if (cartItemsList) {
-        cartItemsList.addEventListener('click', async (e) => {
-            const target = e.target;
-            const productId = target.dataset.productId || target.closest('[data-product-id]')?.dataset.productId;
-
-            if (!productId) return;
-
-            if (target.dataset.action === 'increase') {
-                await updateCartItemQuantity(productId, 1); // Increase by 1
-            } else if (target.dataset.action === 'decrease') {
-                await updateCartItemQuantity(productId, -1); // Decrease by 1
-            } else if (target.classList.contains('remove-item-btn')) {
-                await removeCartItem(productId);
-            }
-        });
-    }
-    // Add logic for coupon button if desired
-    const applyCouponBtn = document.querySelector('.coupon-section .btn-secondary');
-    if (applyCouponBtn) {
-        applyCouponBtn.addEventListener('click', () => {
-            const couponCode = document.getElementById('coupon-code').value;
-            if (couponCode) {
-                showFlashMessage(`Coupon "${couponCode}" applied! (Feature coming soon)`, 'info');
-                // You'd typically send this to Flask via AJAX to apply discount
-            } else {
-                showFlashMessage('Please enter a coupon code.', 'warning');
-            }
-        });
-    }
-
-    // Google Map button placeholder
-    const useGoogleMapButton = document.getElementById('useGoogleMapButton');
-    if (useGoogleMapButton) {
-        useGoogleMapButton.addEventListener('click', () => {
-            showFlashMessage('Google Maps integration is coming soon!', 'info');
-        });
-    }
+    // Attach event listeners for quantity controls
+    document.querySelectorAll('.increase-quantity-btn').forEach(button => {
+        button.onclick = () => updateCartItemQuantity(button.dataset.productId, 1);
+    });
+    document.querySelectorAll('.decrease-quantity-btn').forEach(button => {
+        button.onclick = () => updateCartItemQuantity(button.dataset.productId, -1);
+    });
+    document.querySelectorAll('.remove-item-btn').forEach(button => {
+        button.onclick = () => removeCartItem(button.dataset.productId);
+    });
 }
 
+async function updateCartItemQuantity(productId, change) {
+    const currentQuantityElement = document.querySelector(`.quantity-controls [data-product-id="${productId}"]`).previousElementSibling;
+    let currentQuantity = parseInt(currentQuantityElement.textContent);
+    let newQuantity = currentQuantity + change;
 
-async function updateCartItemQuantity(productId, delta) {
+    if (newQuantity < 0) newQuantity = 0; // Prevent negative quantity
+
     try {
         const response = await fetch('/update_cart_quantity', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ product_id: productId, quantity: delta }) // Send delta
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_id: productId, quantity: newQuantity })
         });
-
         const data = await response.json();
 
-        if (response.status === 401) { // Handle 401 specifically
-            showFlashMessage(data.message || 'Please log in to update your cart.', 'warning');
-            setTimeout(() => window.location.href = '/account', 1500);
-            return;
-        }
-
         if (response.ok && data.success) {
-            showFlashMessage(data.message, 'success');
-            renderCartItems(); // Re-render to show updated totals/quantities
+            displayFlashMessage('success', data.message);
+            renderCartItems(); // Re-render the cart to update totals and items
             updateCartCountInHeader();
+        } else if (response.status === 401) {
+            displayFlashMessage('warning', data.message || 'Please log in to update your cart.');
+            window.location.href = Flask.url_for('account');
         } else {
-            showFlashMessage(data.message || 'Failed to update quantity.', 'danger');
+            displayFlashMessage('danger', data.message || 'Failed to update quantity.');
         }
     } catch (error) {
         console.error('Error updating cart quantity:', error);
-        showFlashMessage('Error updating cart. Please try again.', 'danger');
+        displayFlashMessage('danger', 'An unexpected error occurred. Please try again.');
     }
 }
 
 async function removeCartItem(productId) {
-    // Replaced confirm with custom modal/flash logic to avoid browser alerts.
-    // For now, keeping confirm() for quick fix, but note the instruction.
-    if (!confirm("Are you sure you want to remove this item from your cart?")) {
-        return;
-    }
-    
     try {
         const response = await fetch('/remove_from_cart', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ product_id: productId })
         });
-
         const data = await response.json();
 
-        if (response.status === 401) {
-            showFlashMessage(data.message || 'Please log in to remove items from your cart.', 'warning');
-            setTimeout(() => window.location.href = '/account', 1500);
-            return;
-        }
-
         if (response.ok && data.success) {
-            showFlashMessage(data.message, 'info');
+            displayFlashMessage('success', data.message);
             renderCartItems(); // Re-render cart
-            updateCartCountInHeader(); // Update header count
+            updateCartCountInHeader();
+        } else if (response.status === 401) {
+            displayFlashMessage('warning', data.message || 'Please log in to modify your cart.');
+            window.location.href = Flask.url_for('account');
         } else {
-            showFlashMessage(data.message || 'Failed to remove item.', 'warning');
+            displayFlashMessage('danger', data.message || 'Failed to remove item.');
         }
     } catch (error) {
-        console.error('Network or parsing error removing item from cart:', error);
-        showFlashMessage('An error occurred while removing item.', 'danger');
+        console.error('Error removing item:', error);
+        displayFlashMessage('danger', 'An unexpected error occurred. Please try again.');
     }
 }
 
-
 // ======================== 💰 Payment Page ========================
-
 function initializePaymentOptions() {
-    const paymentMethodRadios = document.querySelectorAll('input[name="payment_method"]');
+    const paymentForm = document.getElementById('payment-form');
+    if (!paymentForm) return;
+
+    const paymentRadios = paymentForm.querySelectorAll('input[name="payment_method"]');
     const telebirrDetails = document.getElementById('telebirr-details');
     const cbebirrDetails = document.getElementById('cbebirr-details');
 
-    if (paymentMethodRadios.length > 0) {
-        const updatePaymentDetailsVisibility = () => {
-            if (telebirrDetails) telebirrDetails.style.display = 'none';
-            if (cbebirrDetails) cbebirrDetails.style.display = 'none';
+    const togglePaymentDetails = () => {
+        telebirrDetails.classList.add('hidden');
+        cbebirrDetails.classList.add('hidden');
 
-            const selectedMethod = document.querySelector('input[name="payment_method"]:checked')?.value;
-            if (selectedMethod === 'telebirr' && telebirrDetails) {
-                telebirrDetails.style.display = 'block';
-            } else if (selectedMethod === 'cbebirr' && cbebirrDetails) {
-                cbebirrDetails.style.display = 'block';
-            }
-        };
+        const selectedMethod = paymentForm.querySelector('input[name="payment_method"]:checked').value;
+        if (selectedMethod === 'telebirr') {
+            telebirrDetails.classList.remove('hidden');
+        } else if (selectedMethod === 'cbebirr') {
+            cbebirrDetails.classList.remove('hidden');
+        }
+    };
 
-        paymentMethodRadios.forEach(radio => {
-            radio.addEventListener('change', updatePaymentDetailsVisibility);
-        });
+    paymentRadios.forEach(radio => {
+        radio.addEventListener('change', togglePaymentDetails);
+    });
 
-        updatePaymentDetailsVisibility(); // Call on load to set initial state
-    }
+    // Initial call to set correct visibility based on default checked radio
+    togglePaymentDetails();
 }
 
-// ======================== 🛠️ Admin Panel (Placeholder) ========================
+// ======================== 🔑 Admin Panel ========================
 function initializeAdminPanel() {
     console.log("Admin panel initialized.");
 
@@ -424,18 +308,131 @@ function initializeAdminPanel() {
     });
 }
 
-
-// ======================== 📱 Mobile Navigation Toggle ========================
+// ======================== 📱 Mobile Navigation Toggle ========================\
 function initializeMobileNavToggle() {
     const menuToggle = document.querySelector('.menu-toggle');
     const navLinks = document.querySelector('.nav-links');
+    const mainContent = document.querySelector('main'); // Select main content area
 
-    if (menuToggle && navLinks) {
-        menuToggle.addEventListener('click', () => {
+    if (menuToggle && navLinks && mainContent) {
+        const toggleMenu = () => {
             navLinks.classList.toggle('active');
+            menuToggle.classList.toggle('active'); // Toggle class for hamburger icon animation
+            // Toggle overflow hidden on body to prevent scrolling when menu is open
+            document.body.style.overflow = navLinks.classList.contains('active') ? 'hidden' : '';
+        };
+
+        menuToggle.addEventListener('click', toggleMenu);
+
+        // Close menu when a nav link is clicked (for single page navigation or direct links)
+        navLinks.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                if (navLinks.classList.contains('active')) {
+                    toggleMenu(); // Close menu after clicking a link
+                }
+            });
+        });
+
+        // Close menu when clicking outside of it (on main content)
+        mainContent.addEventListener('click', (event) => {
+            if (navLinks.classList.contains('active') && !navLinks.contains(event.target) && !menuToggle.contains(event.target)) {
+                toggleMenu();
+            }
         });
     }
 }
+
+// ======================== 🔍 Product Search ========================
+function initializeProductSearch() {
+    const searchInput = document.getElementById('product-search-input');
+    const searchResultsSection = document.getElementById('search-results-section');
+    const productCategoriesDisplay = document.getElementById('product-categories-display');
+    const productsSectionTitle = document.getElementById('products-section-title');
+    const clearSearchBtn = document.getElementById('clear-search-btn');
+
+    if (!searchInput || !searchResultsSection || !productCategoriesDisplay || !productsSectionTitle || !clearSearchBtn) {
+        console.warn("Search elements not found. Search functionality will not be initialized.");
+        return;
+    }
+
+    let searchTimeout;
+
+    const performSearch = async (query) => {
+        if (query.length < 2 && query.length !== 0) { // Require at least 2 characters for search unless clearing
+            searchResultsSection.innerHTML = '';
+            searchResultsSection.style.display = 'none';
+            productCategoriesDisplay.style.display = 'block';
+            productsSectionTitle.textContent = "All Our Products";
+            clearSearchBtn.classList.add('hidden');
+            return;
+        }
+
+        if (query.length === 0) {
+            // If query is empty, show all products and hide search results
+            searchResultsSection.innerHTML = '';
+            searchResultsSection.style.display = 'none';
+            productCategoriesDisplay.style.display = 'block';
+            productsSectionTitle.textContent = "All Our Products";
+            clearSearchBtn.classList.add('hidden');
+            return;
+        }
+
+        productsSectionTitle.textContent = `Search Results for "${query}"`;
+        productCategoriesDisplay.style.display = 'none'; // Hide category sections
+        searchResultsSection.style.display = 'grid'; // Show search results container
+        clearSearchBtn.classList.remove('hidden'); // Show clear button
+
+        searchResultsSection.innerHTML = '<p style="text-align: center; grid-column: 1 / -1; padding: 20px;">Searching...</p>';
+
+        try {
+            const response = await fetch(`/search_products?query=${encodeURIComponent(query)}`);
+            const data = await response.json();
+
+            searchResultsSection.innerHTML = ''; // Clear "Searching..." message
+
+            if (data.products && data.products.length > 0) {
+                data.products.forEach(product => {
+                    const productCard = document.createElement('div');
+                    productCard.className = 'product-card';
+                    productCard.innerHTML = `
+                        <img src="${product.image_path}" alt="${product.name}">
+                        <div class="product-info">
+                            <h3>${product.name}</h3>
+                            <p class="product-description">${product.description}</p>
+                            <p class="product-price">ETB ${product.price.toFixed(2)}</p>
+                            <button type="button" class="add-to-cart-btn"
+                                    data-product-id="${product.id}"
+                                    data-name="${product.name}"
+                                    data-price="${product.price}">
+                                Add to Cart
+                            </button>
+                        </div>
+                    `;
+                    searchResultsSection.appendChild(productCard);
+                });
+                initializeAddToCartButtons(); // Re-initialize buttons for new products
+            } else {
+                searchResultsSection.innerHTML = '<p style="text-align: center; grid-column: 1 / -1; padding: 20px;">No products found matching your search.</p>';
+            }
+        } catch (error) {
+            console.error('Error during product search:', error);
+            searchResultsSection.innerHTML = '<p style="text-align: center; grid-column: 1 / -1; padding: 20px; color: red;">Error searching for products. Please try again.</p>';
+        }
+    };
+
+    searchInput.addEventListener('input', (event) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            performSearch(event.target.value);
+        }, 300); // Debounce for 300ms
+    });
+
+    clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = ''; // Clear input
+        performSearch(''); // Trigger search with empty query to show all products
+    });
+}
+
 
 // Global Flask URL helper (if Flask-JS is not used)
 // This is critical for Flask.url_for in JS to work

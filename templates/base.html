@@ -26,6 +26,7 @@
                     {% if session.get('is_admin') %}
                     <li><a href="{{ url_for('admin') }}">Admin Panel</a></li>
                     {% endif %}
+                    <li><a href="{{ url_for('about_us') }}">About Us</a></li> {# New About Us link #}
                     <li>
                         <a href="{{ url_for('cart') }}" class="cart-icon">
                             <i class="fas fa-shopping-cart"></i>
