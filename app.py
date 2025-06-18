@@ -16,7 +16,9 @@ load_dotenv()
 
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.environ.get("+199034653116") 
+TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER") # Your Twilio phone number (e.g., "+15017122661")
+
+# Initialize Twilio client only if credentials are provided
 if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
     twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 else:
@@ -583,7 +585,7 @@ def remove_from_cart():
 @app.route('/cart')
 # Removed @login_required decorator to allow guest access
 def cart():
-    # Only try to get user's default address/phone if logged in
+    # Only try to get user's default delivery address/phone if logged in
     user_address = g.user.address if g.user and g.user.address else ''
     user_phone = g.user.phone if g.user and g.user.phone else ''
     return render_template('cart.html', user_address=user_address, user_phone=user_phone, datetime=datetime) # Ensure datetime is passed
@@ -895,72 +897,89 @@ def about_us():
 
 
 # --- Data Population (for initial setup) ---
-# Filtered out yogurt products
+# NOTE: Ensure you have corresponding image files (e.g., product1.png to product40.png)
+# in your 'static/images/' directory for these products to display correctly.
 products_data = [
+    # Milk (image_suffix 1-10)
     {"name": "Fresh Cow Milk (1L)", "category": "milk", "price": 80.00, "image_suffix": 1, "description": "Pure, pasteurized cow milk, delivered fresh daily."},
     {"name": "Organic Whole Milk (1L)", "category": "milk", "price": 95.00, "image_suffix": 2, "description": "Sourced from organic farms, rich in nutrients and flavor."},
     {"name": "Low-Fat Milk (1L)", "category": "milk", "price": 70.00, "image_suffix": 3, "description": "A healthy choice with reduced fat content, perfect for everyday use."},
     {"name": "Lactose-Free Milk (1L)", "category": "milk", "price": 110.00, "image_suffix": 4, "description": "Easy to digest, all the goodness of milk without lactose."},
-    {"name": "Skim Milk (1L)", "category": "milk", "price": 65.00, "image_suffix": 13, "description": "Virtually fat-free, ideal for health-conscious individuals."},
-    {"name": "Goat Milk (500ml)", "category": "milk", "price": 120.00, "image_suffix": 14, "description": "Nutrient-rich goat milk, a great alternative for sensitive stomachs."},
-    {"name": "Almond Milk (1L)", "category": "milk", "price": 100.00, "image_suffix": 15, "description": "Dairy-free almond milk, perfect for vegans and those with intolerances."},
-    {"name": "Soy Milk (1L)", "category": "milk", "price": 90.00, "image_suffix": 16, "description": "Plant-based soy milk, high in protein and versatility."},
-    {"name": "Chocolate Milk (500ml)", "category": "milk", "price": 75.00, "image_suffix": 17, "description": "Rich and delicious chocolate milk, a treat for all ages."},
-    {"name": "Strawberry Milk (500ml)", "category": "milk", "price": 75.00, "image_suffix": 18, "description": "Sweet strawberry-flavored milk, a fun drink for kids."},
+    {"name": "Skim Milk (1L)", "category": "milk", "price": 65.00, "image_suffix": 5, "description": "Virtually fat-free, ideal for health-conscious individuals."},
+    {"name": "Goat Milk (500ml)", "category": "milk", "price": 120.00, "image_suffix": 6, "description": "Nutrient-rich goat milk, a great alternative for sensitive stomachs."},
+    {"name": "Almond Milk (1L)", "category": "milk", "price": 100.00, "image_suffix": 7, "description": "Dairy-free almond milk, perfect for vegans and those with intolerances."},
+    {"name": "Soy Milk (1L)", "category": "milk", "price": 90.00, "image_suffix": 8, "description": "Plant-based soy milk, high in protein and versatility."},
+    {"name": "Chocolate Milk (500ml)", "category": "milk", "price": 95.00, "image_suffix": 9, "description": "Rich and delicious chocolate milk, a treat for all ages."},
+    {"name": "Strawberry Milk (500ml)", "category": "milk", "price": 95.00, "image_suffix": 10, "description": "Sweet strawberry-flavored milk, a fun drink for kids."},
 
-    {"name": "Cheddar Cheese (200g)", "category": "cheese", "price": 150.00, "image_suffix": 8, "description": "Classic sharp cheddar cheese block, aged to perfection."},
-    {"name": "Mozzarella Cheese (200g)", "category": "cheese", "price": 130.00, "image_suffix": 9, "description": "Perfect for pizzas and pastas, melts beautifully and stretches."},
-    {"name": "Feta Cheese (150g)", "category": "cheese", "price": 120.00, "image_suffix": 10, "description": "Tangy and salty, ideal for salads and Mediterranean dishes."},
-    {"name": "Gouda Cheese (200g)", "category": "cheese", "price": 160.00, "image_suffix": 26, "description": "Semi-hard cheese with a mild, nutty flavor."},
-    {"name": "Cream Cheese (250g)", "category": "cheese", "price": 100.00, "image_suffix": 27, "description": "Smooth and spreadable, great for bagels and cooking."},
-    {"name": "Parmesan Cheese (100g)", "category": "cheese", "price": 180.00, "image_suffix": 28, "description": "Hard, granular cheese perfect for grating over pasta."},
-    {"name": "Ricotta Cheese (250g)", "category": "cheese", "price": 90.00, "image_suffix": 29, "description": "Soft and creamy, ideal for Italian desserts and savory dishes."},
-    {"name": "Cottage Cheese (250g)", "category": "cheese", "price": 80.00, "image_suffix": 30, "description": "High in protein, a versatile and healthy snack."},
-    {"name": "Swiss Cheese (200g)", "category": "cheese", "price": 140.00, "image_suffix": 31, "description": "Distinctive holes and a mild, nutty taste."},
-    {"name": "Provolone Cheese (200g)", "category": "cheese", "price": 135.00, "image_suffix": 32, "description": "Versatile cheese, great for sandwiches and melting."},
+    # Cheese (image_suffix 11-20)
+    {"name": "Cheddar Cheese (200g)", "category": "cheese", "price": 150.00, "image_suffix": 11, "description": "Classic sharp cheddar cheese block, aged to perfection."},
+    {"name": "Mozzarella Cheese (200g)", "category": "cheese", "price": 130.00, "image_suffix": 12, "description": "Perfect for pizzas and pastas, melts beautifully and stretches."},
+    {"name": "Feta Cheese (150g)", "category": "cheese", "price": 120.00, "image_suffix": 13, "description": "Tangy and salty, ideal for salads and Mediterranean dishes."},
+    {"name": "Gouda Cheese (200g)", "category": "cheese", "price": 160.00, "image_suffix": 14, "description": "Semi-hard cheese with a mild, nutty flavor."},
+    {"name": "Cream Cheese (250g)", "category": "cheese", "price": 100.00, "image_suffix": 15, "description": "Smooth and spreadable, great for bagels and cooking."},
+    {"name": "Parmesan Cheese (100g)", "category": "cheese", "price": 180.00, "image_suffix": 16, "description": "Hard, granular cheese perfect for grating over pasta."},
+    {"name": "Ricotta Cheese (250g)", "category": "cheese", "price": 90.00, "image_suffix": 17, "description": "Soft and creamy, ideal for Italian desserts and savory dishes."},
+    {"name": "Cottage Cheese (250g)", "category": "cheese", "price": 80.00, "image_suffix": 18, "description": "High in protein, a versatile and healthy snack."},
+    {"name": "Swiss Cheese (200g)", "category": "cheese", "price": 140.00, "image_suffix": 19, "description": "Distinctive holes and a mild, nutty taste."},
+    {"name": "Provolone Cheese (200g)", "category": "cheese", "price": 135.00, "image_suffix": 20, "description": "Versatile cheese, great for sandwiches and melting."},
 
-    {"name": "Salted Butter (250g)", "category": "butter", "price": 90.00, "image_suffix": 11, "description": "Rich and creamy salted butter, perfect for spreading."},
-    {"name": "Unsalted Butter (250g)", "category": "butter", "price": 90.00, "image_suffix": 12, "description": "Pure, unsalted butter for baking and cooking, allows flavor control."},
+    # Yogurt (image_suffix 21-30) - New entries based on user request
+    {"name": "Plain Yogurt (500g)", "category": "yogurt", "price": 70.00, "image_suffix": 21, "description": "Creamy and natural plain yogurt, great for breakfast or cooking."},
+    {"name": "Strawberry Yogurt (200g)", "category": "yogurt", "price": 55.00, "image_suffix": 22, "description": "Sweet strawberry-flavored yogurt, a delightful snack."},
+    {"name": "Vanilla Bean Yogurt (200g)", "category": "yogurt", "price": 60.00, "image_suffix": 23, "description": "Smooth vanilla yogurt with real bean specks."},
+    {"name": "Greek Yogurt (250g)", "category": "yogurt", "price": 85.00, "image_suffix": 24, "description": "Thick and protein-rich Greek yogurt."},
+    {"name": "Blueberry Yogurt (200g)", "category": "yogurt", "price": 58.00, "image_suffix": 25, "description": "Fruity yogurt with juicy blueberries."},
+    {"name": "Mango Yogurt (200g)", "category": "yogurt", "price": 58.00, "image_suffix": 26, "description": "Tropical mango-flavored yogurt."},
+    {"name": "Honey Yogurt (200g)", "category": "yogurt", "price": 62.00, "image_suffix": 27, "description": "Naturally sweetened with pure honey."},
+    {"name": "Peach Yogurt (200g)", "category": "yogurt", "price": 55.00, "image_suffix": 28, "description": "Refreshing peach-flavored yogurt."},
+    {"name": "Low-Fat Yogurt (500g)", "category": "yogurt", "price": 65.00, "image_suffix": 29, "description": "Healthy low-fat option for everyday consumption."},
+    {"name": "Probiotic Yogurt (200g)", "category": "yogurt", "price": 75.00, "image_suffix": 30, "description": "Contains live cultures for digestive health."},
+
+    # Butter (image_suffix 31-40) - Adjusted existing and added new ones
+    {"name": "Salted Butter (250g)", "category": "butter", "price": 90.00, "image_suffix": 31, "description": "Rich and creamy salted butter, perfect for spreading."},
+    {"name": "Unsalted Butter (250g)", "category": "butter", "price": 90.00, "image_suffix": 32, "description": "Pure, unsalted butter for baking and cooking, allows flavor control."},
     {"name": "Ghee (Clarified Butter, 500g)", "category": "butter", "price": 200.00, "image_suffix": 33, "description": "Traditional clarified butter, rich flavor and high smoke point."},
     {"name": "Garlic Herb Butter (150g)", "category": "butter", "price": 110.00, "image_suffix": 34, "description": "Infused with garlic and herbs, perfect for steaks or bread."},
     {"name": "Whipped Butter (200g)", "category": "butter", "price": 85.00, "image_suffix": 35, "description": "Light and airy whipped butter, easy to spread."},
+    {"name": "Cultured Butter (250g)", "category": "butter", "price": 105.00, "image_suffix": 36, "description": "Tangy and flavorful, made from cultured cream."},
+    {"name": "European Style Butter (250g)", "category": "butter", "price": 115.00, "image_suffix": 37, "description": "Higher fat content for richer taste and texture."},
+    {"name": "Light Butter (250g)", "category": "butter", "price": 75.00, "image_suffix": 38, "description": "Reduced-fat butter alternative."},
+    {"name": "Brown Butter (Homemade, 100g)", "category": "butter", "price": 130.00, "image_suffix": 39, "description": "Nutty and aromatic, great for desserts and savory dishes."},
+    {"name": "Avocado Oil Butter (250g)", "category": "butter", "price": 125.00, "image_suffix": 40, "description": "Blend of butter and healthy avocado oil."},
 ]
 
 
 @app.cli.command('init-db')
 def init_db_command():
-    """Initializes the database and populates with sample data."""
+    """Initializes the database and populates with sample data.
+    This command will first delete all existing products and then repopulate.
+    Use with caution in production environments as it clears product data."""
     with app.app_context():
         db.create_all()
         print("Database initialized.")
         
-        # Check if products already exist before populating
-        if not Product.query.first():
-            print("Products missing. Populating...")
-            for i, p_data in enumerate(products_data):
-                # Using image_suffix if provided, otherwise generate a placeholder or default
-                image_name = f"product{p_data.get('image_suffix', i+1)}.png" 
-                new_product = Product(
-                    name=p_data['name'],
-                    category=p_data['category'],
-                    price=p_data['price'],
-                    image_path=image_name,
-                    description=p_data['description']
-                )
-                db.session.add(new_product)
-            db.session.commit()
-            print("Products populated.")
-        else:
-            print("Products already exist. Skipping population.")
-            # If products exist, we might need to remove yogurt products explicitly
-            # if the user has previously added them and wants them gone from DB.
-            # For simplicity in a multi-turn, we'll assume a fresh init-db if needed.
-            # A more robust solution would be a migration to remove specific products.
-            # Example to remove existing yogurt products if they exist:
-            # db.session.query(Product).filter_by(category='yogurt').delete()
-            # db.session.commit()
-            # print("Existing yogurt products removed.")
+        # Always delete existing products before populating to ensure consistency with new mapping
+        # This is especially important when changing product data structure or ranges.
+        print("Deleting all existing products...")
+        Product.query.delete()
+        db.session.commit()
+        print("Existing products deleted.")
 
+        print("Populating products with new data...")
+        for p_data in products_data:
+            # Construct image path using the explicit image_suffix
+            image_name = f"product{p_data['image_suffix']}.png" 
+            new_product = Product(
+                name=p_data['name'],
+                category=p_data['category'],
+                price=p_data['price'],
+                image_path=image_name,
+                description=p_data['description']
+            )
+            db.session.add(new_product)
+        db.session.commit()
+        print(f"Products populated. Total {len(products_data)} products added.")
 
         # Create admin user if not exists
         if not User.query.filter_by(is_admin=True).first():
@@ -968,7 +987,7 @@ def init_db_command():
             admin_user = User(
                 name="Admin",
                 lastname="User",
-                phone="+251911223344", # Changed to E.164 format
+                phone="+251911223344",
                 email="admin@example.com",
                 password=generate_password_hash("adminpass"),
                 is_admin=True,
@@ -983,6 +1002,7 @@ def init_db_command():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all() # Ensure tables are created when running directly
-        # You can call init_db_command() here for initial setup if not using 'flask init-db'
-        # init_db_command() # Uncomment to run population on every run for development
+        # To populate or re-populate your database with the new product data, run:
+        # flask init-db
+        # from your terminal.
     app.run(debug=True)
