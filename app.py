@@ -17,7 +17,6 @@ load_dotenv()
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.environ.get("+199034653116") 
-# Initialize Twilio client only if credentials are provided
 if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
     twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 else:
@@ -227,17 +226,14 @@ def admin_required(f):
 @app.route('/home')
 def home():
     milk_products = Product.query.filter_by(category='milk').all()
-    yogurt_products = Product.query.filter_by(category='yogurt').all()
     cheese_products = Product.query.filter_by(category='cheese').all()
     butter_products = Product.query.filter_by(category='butter').all()
-    # Also fetch all products for the search feature to be displayed initially
-    all_products = Product.query.all() 
+    all_products = Product.query.all() # Fetch all products to display in a single grid
     return render_template('home.html',
-                           milk_products=milk_products,
-                           yogurt_products=yogurt_products,
-                           cheese_products=cheese_products,
-                           butter_products=butter_products,
-                           all_products=all_products, # Pass all products for initial display and search
+                           milk_products=milk_products, # Still passed, but not explicitly used in template now
+                           cheese_products=cheese_products, # Still passed, but not explicitly used in template now
+                           butter_products=butter_products, # Still passed, but not explicitly used in template now
+                           all_products=all_products, # This will be used to display all products
                            datetime=datetime)
 
 @app.route('/account', methods=['GET'])
@@ -402,6 +398,37 @@ def verify_otp():
             session['is_admin'] = user.is_admin
             flash(f"Welcome back, {user.name}!", 'success')
 
+        # --- Cart Merging Logic ---
+        # If there's a guest cart in session, merge it with the newly logged-in user's cart in the DB.
+        current_session_cart = session.get('cart', {})
+        if current_session_cart and session.get('user_id'): # Only merge if there's a cart and a user is now logged in
+            logged_in_user_id = session['user_id']
+            for product_id_str, item_data in current_session_cart.items():
+                product_id = int(product_id_str)
+                quantity = item_data['quantity']
+
+                existing_cart_item = CartItem.query.filter_by(
+                    user_id=logged_in_user_id,
+                    product_id=product_id
+                ).first()
+
+                if existing_cart_item:
+                    existing_cart_item.quantity += quantity
+                else:
+                    new_cart_item_db = CartItem(
+                        user_id=logged_in_user_id,
+                        product_id=product_id,
+                        quantity=quantity
+                    )
+                    db.session.add(new_cart_item_db)
+            
+            db.session.commit() # Commit all merged cart items to the database
+            session.pop('cart', None) # Clear the session cart after it's persisted to DB
+            session.modified = True
+            print(f"Cart merged and persisted for user {logged_in_user_id}. Session cart cleared.")
+        # --- End Cart Merging Logic ---
+
+
         # Clear OTP session data after success
         for key in ['otp_code', 'otp_phone', 'otp_timestamp', 'signup_name', 'action_type']:
             session.pop(key, None)
@@ -416,11 +443,13 @@ def verify_otp():
 @app.route('/logout')
 @login_required
 def logout():
+    # If a user logs out, their cart in the DB remains.
+    # The session cart is simply cleared as it's no longer associated with a logged-in user.
     session.pop('user_id', None)
     session.pop('user_name', None)
     session.pop('is_admin', None)
-    session.pop('delivery_info', None)
-    session.pop('cart', None) # Clear cart on logout
+    session.pop('delivery_info', None) # Clear delivery info if any
+    session.pop('cart', None) # This clears the in-memory session cart. The DB cart persists.
     session.modified = True # Explicitly mark session as modified
     flash('You have been logged out.', 'info')
     return redirect(url_for('home'))
@@ -428,14 +457,6 @@ def logout():
 
 @app.route('/add_to_cart', methods=['POST'])
 def add_to_cart():
-    # Explicitly check for user_id for API calls. If not logged in, return JSON 401.
-    if 'user_id' not in session:
-        return jsonify({
-            'success': False,
-            'error': 'Not logged in',
-            'message': 'Authentication required. Please log in to proceed.'
-        }), 401
-
     try:
         data = request.get_json()
         product_id_str = str(data.get('product_id'))
@@ -449,6 +470,7 @@ def add_to_cart():
         if not product:
             return jsonify({'success': False, 'message': 'Product not found'}), 404
 
+        # Initialize cart in session if it doesn't exist (for guests or logged-in)
         if 'cart' not in session:
             session['cart'] = {}
 
@@ -478,22 +500,15 @@ def add_to_cart():
 
 @app.route('/get_cart_count')
 def get_cart_count():
-    # This endpoint is designed to be accessible without login to show '0' in header
+    # Always return cart count from session, regardless of login status
     total_quantity = 0
-    if 'user_id' in session and 'cart' in session: # Only count if user is logged in AND cart exists
+    if 'cart' in session:
         total_quantity = sum(item['quantity'] for item in session['cart'].values())
     return jsonify({'cart_count': total_quantity}), 200
 
 @app.route('/get_cart_items')
 def get_cart_items():
-    # Explicitly check for user_id for API calls. If not logged in, return JSON 401.
-    if 'user_id' not in session:
-        return jsonify({
-            'cart_items': [], # Return empty array if not logged in
-            'error': 'Not logged in',
-            'message': 'Authentication required to view cart.'
-        }), 401 # Return 401 for not logged in, consistent with other API errors
-
+    # Always return cart items from session, regardless of login status
     cart_data = session.get('cart', {})
     items_list = []
 
@@ -502,7 +517,7 @@ def get_cart_items():
             'id': product_id_str,
             'name': item_data['name'],
             'price': item_data['price'],
-            'image_url': url_for('static', filename='images/' + item_data.get('image_path', 'default.png')), # Use item_data's image_path
+            'image_url': url_for('static', filename='images/' + item_data.get('image_path', 'default.png')),
             'quantity': item_data['quantity']
         })
     
@@ -510,14 +525,6 @@ def get_cart_items():
 
 @app.route('/update_cart_quantity', methods=['POST'])
 def update_cart_quantity():
-    # Explicitly check for user_id for API calls. If not logged in, return JSON 401.
-    if 'user_id' not in session:
-        return jsonify({
-            'success': False,
-            'error': 'Not logged in',
-            'message': 'Authentication required. Please log in to proceed.'
-        }), 401
-
     try:
         data = request.get_json()
         product_id = str(data.get('product_id'))
@@ -526,7 +533,7 @@ def update_cart_quantity():
         if new_quantity is None or not isinstance(new_quantity, int) or new_quantity < 0:
             return jsonify({'success': False, 'message': 'Invalid product ID or quantity.'}), 400
 
-        cart = session.get('cart', {})
+        cart = session.get('cart', {}) # Use session cart
 
         if product_id not in cart:
             return jsonify({'success': False, 'message': 'Item not found in cart.'}), 404
@@ -551,19 +558,11 @@ def update_cart_quantity():
 
 @app.route('/remove_from_cart', methods=['POST'])
 def remove_from_cart():
-    # Explicitly check for user_id for API calls. If not logged in, return JSON 401.
-    if 'user_id' not in session:
-        return jsonify({
-            'success': False,
-            'error': 'Not logged in',
-            'message': 'Authentication required. Please log in to proceed.'
-        }), 401
-
     try:
         data = request.get_json()
         product_id = str(data.get('product_id'))
 
-        cart = session.get('cart', {})
+        cart = session.get('cart', {}) # Use session cart
 
         if product_id not in cart:
             return jsonify({'success': False, 'message': 'Item not found in cart.'}), 404
@@ -582,25 +581,23 @@ def remove_from_cart():
 
 
 @app.route('/cart')
-@login_required
+# Removed @login_required decorator to allow guest access
 def cart():
-    # Fetch user's default delivery address for pre-filling
+    # Only try to get user's default address/phone if logged in
     user_address = g.user.address if g.user and g.user.address else ''
     user_phone = g.user.phone if g.user and g.user.phone else ''
     return render_template('cart.html', user_address=user_address, user_phone=user_phone, datetime=datetime) # Ensure datetime is passed
 
 @app.route('/checkout', methods=['POST'])
-@login_required
+@login_required # This route still requires login to proceed to payment
 def checkout():
     # This route is hit from the cart page after confirming delivery details
-    # No longer using hidden total_amount/cart_data from form, calculate on server-side
-    # The 'name' field is actually for the delivery recipient, not user's full name.
-    # We'll use the logged-in user's name if not provided.
-    delivery_name = request.form.get('delivery_name', session.get('user_name', '')) # Get delivery name, default to user's name
+    # The login_required decorator ensures user is logged in here.
+    delivery_name = request.form.get('delivery_name', session.get('user_name', '')) 
     delivery_phone = request.form.get('delivery_phone')
     delivery_address = request.form.get('delivery_address')
 
-    if not all([delivery_phone, delivery_address]): # delivery_name can be optional or default to user's name
+    if not all([delivery_phone, delivery_address]): 
         flash("Missing delivery phone or address. Please fill all fields.", 'danger')
         return redirect(url_for('cart'))
 
@@ -617,8 +614,28 @@ def checkout():
     # Calculate total and get cart items from session (server-side for security)
     cart_items_session = session.get('cart', {})
     if not cart_items_session:
-        flash("Your cart is empty. Please add items before checking out.", 'warning')
-        return redirect(url_for('home'))
+        # If cart is empty here, it means it was just merged, or user logged out and back in
+        # We need to load user's actual DB cart if session cart is empty but user is logged in.
+        if g.user:
+            user_db_cart_items = CartItem.query.filter_by(user_id=g.user.id).all()
+            if user_db_cart_items:
+                # Reconstruct session cart from DB cart items
+                for db_item in user_db_cart_items:
+                    cart_items_session[str(db_item.product_id)] = {
+                        'id': str(db_item.product_id),
+                        'name': db_item.product.name,
+                        'price': float(db_item.product.price),
+                        'image_path': db_item.product.image_path,
+                        'quantity': db_item.quantity
+                    }
+                session['cart'] = cart_items_session
+                session.modified = True
+            else:
+                flash("Your cart is empty. Please add items before checking out.", 'warning')
+                return redirect(url_for('home'))
+        else: # Should not happen if @login_required is working
+            flash("Your cart is empty. Please add items before checking out.", 'warning')
+            return redirect(url_for('home'))
 
     total_amount = sum(item['price'] * item['quantity'] for item in cart_items_session.values())
 
@@ -636,7 +653,7 @@ def checkout():
     return redirect(url_for('payment'))
 
 @app.route('/payment')
-@login_required
+@login_required # This route still requires login
 def payment():
     # Retrieve delivery info and total from session
     delivery_info = session.get('delivery_info')
@@ -651,7 +668,7 @@ def payment():
 
 
 @app.route('/finalize_order', methods=['POST'])
-@login_required
+@login_required # This route still requires login
 def finalize_order():
     user_id = session['user_id']
     user = User.query.get(user_id)
@@ -668,29 +685,27 @@ def finalize_order():
     server_validated_total = 0.0
     order_items_to_add = []
     
-    for item_data in delivery_info['cart_items']:
-        try:
-            product_id = int(item_data['id'])
-        except ValueError:
-            flash(f"Invalid product ID in cart: {item_data['id']}", 'danger')
-            return redirect(url_for('cart'))
+    # After login, the session['cart'] might be empty if it was just merged to DB.
+    # So, we should ensure the items are fetched from the DB for the final order creation.
+    # This ensures consistency even if session was cleared or user navigated away then back.
+    user_db_cart_items = CartItem.query.filter_by(user_id=user_id).all()
+    if not user_db_cart_items:
+        flash("Your cart is empty. Please add items before checking out.", 'warning')
+        return redirect(url_for('home'))
 
-        quantity = item_data.get('quantity')
-        if not quantity or not isinstance(quantity, int) or quantity <= 0:
-            flash('Invalid item quantity in cart.', 'danger')
-            return redirect(url_for('cart'))
-
-        product = Product.query.get(product_id)
+    for db_item in user_db_cart_items:
+        product = Product.query.get(db_item.product_id)
         if not product:
-            flash(f"Product '{item_data.get('name', 'Unknown')}' not found. Please refresh your cart.", 'danger')
+            # Handle case where product might have been deleted after adding to cart
+            flash(f"One of the products in your cart ({db_item.product.name if db_item.product else 'Unknown'}) is no longer available. Please review your cart.", 'danger')
             return redirect(url_for('cart'))
 
-        item_total = product.price * quantity
+        item_total = product.price * db_item.quantity
         server_validated_total += item_total
         order_items_to_add.append({
             'product_id': product.id,
-            'quantity': quantity,
-            'price': product.price
+            'quantity': db_item.quantity,
+            'price': product.price # Store current price for historical accuracy
         })
 
     payment_method = request.form.get('payment_method')
@@ -748,8 +763,10 @@ def finalize_order():
             )
             db.session.add(order_item)
             
-        # Clear the user's cart in session
-        session.pop('cart', None)
+        # Clear the user's cart from the database after order is finalized
+        CartItem.query.filter_by(user_id=user_id).delete()
+        
+        session.pop('cart', None) # Clear the session cart (it should be empty anyway after merge)
         session.modified = True # Mark session modified
 
         db.session.commit()
@@ -766,7 +783,7 @@ def finalize_order():
         return redirect(url_for('cart'))
 
 @app.route('/dashboard')
-@login_required
+@login_required # Dashboard still requires login
 def dashboard():
     orders = Order.query.filter_by(user_id=g.user.id).order_by(Order.order_date.desc()).all()
     return render_template('dashboard.html', orders=orders, datetime=datetime) # Ensure datetime is passed
@@ -878,6 +895,7 @@ def about_us():
 
 
 # --- Data Population (for initial setup) ---
+# Filtered out yogurt products
 products_data = [
     {"name": "Fresh Cow Milk (1L)", "category": "milk", "price": 80.00, "image_suffix": 1, "description": "Pure, pasteurized cow milk, delivered fresh daily."},
     {"name": "Organic Whole Milk (1L)", "category": "milk", "price": 95.00, "image_suffix": 2, "description": "Sourced from organic farms, rich in nutrients and flavor."},
@@ -889,17 +907,6 @@ products_data = [
     {"name": "Soy Milk (1L)", "category": "milk", "price": 90.00, "image_suffix": 16, "description": "Plant-based soy milk, high in protein and versatility."},
     {"name": "Chocolate Milk (500ml)", "category": "milk", "price": 75.00, "image_suffix": 17, "description": "Rich and delicious chocolate milk, a treat for all ages."},
     {"name": "Strawberry Milk (500ml)", "category": "milk", "price": 75.00, "image_suffix": 18, "description": "Sweet strawberry-flavored milk, a fun drink for kids."},
-
-    {"name": "Plain Yogurt (500g)", "category": "yogurt", "price": 50.00, "image_suffix": 5, "description": "Creamy and natural plain yogurt, great as a base or on its own."},
-    {"name": "Strawberry Yogurt (500g)", "category": "yogurt", "price": 65.00, "image_suffix": 6, "description": "Sweetened with real strawberries, a delightful snack."},
-    {"name": "Greek Yogurt (500g)", "category": "yogurt", "price": 85.00, "image_suffix": 7, "description": "Thick, high-protein Greek yogurt, perfect for a healthy breakfast."},
-    {"name": "Vanilla Bean Yogurt (500g)", "category": "yogurt", "price": 70.00, "image_suffix": 19, "description": "Infused with natural vanilla bean for a classic flavor."},
-    {"name": "Mango Yogurt (500g)", "category": "yogurt", "price": 75.00, "image_suffix": 20, "description": "Exotic mango-flavored yogurt, a tropical delight."},
-    {"name": "Blueberry Yogurt (500g)", "category": "yogurt", "price": 70.00, "image_suffix": 21, "description": "Tangy and sweet, packed with fresh blueberries."},
-    {"name": "Probiotic Yogurt (500g)", "category": "yogurt", "price": 90.00, "image_suffix": 22, "description": "Boost your gut health with this active probiotic yogurt."},
-    {"name": "Coconut Yogurt (500g)", "category": "yogurt", "price": 95.00, "image_suffix": 23, "description": "Dairy-free coconut yogurt, creamy and naturally sweet."},
-    {"name": "Honey Yogurt (500g)", "category": "yogurt", "price": 60.00, "image_suffix": 24, "description": "Sweetened with pure honey, a wholesome and natural option."},
-    {"name": "Peach Yogurt (500g)", "category": "yogurt", "price": 70.00, "image_suffix": 25, "description": "Delicious peach-flavored yogurt, smooth and refreshing."},
 
     {"name": "Cheddar Cheese (200g)", "category": "cheese", "price": 150.00, "image_suffix": 8, "description": "Classic sharp cheddar cheese block, aged to perfection."},
     {"name": "Mozzarella Cheese (200g)", "category": "cheese", "price": 130.00, "image_suffix": 9, "description": "Perfect for pizzas and pastas, melts beautifully and stretches."},
@@ -945,6 +952,15 @@ def init_db_command():
             print("Products populated.")
         else:
             print("Products already exist. Skipping population.")
+            # If products exist, we might need to remove yogurt products explicitly
+            # if the user has previously added them and wants them gone from DB.
+            # For simplicity in a multi-turn, we'll assume a fresh init-db if needed.
+            # A more robust solution would be a migration to remove specific products.
+            # Example to remove existing yogurt products if they exist:
+            # db.session.query(Product).filter_by(category='yogurt').delete()
+            # db.session.commit()
+            # print("Existing yogurt products removed.")
+
 
         # Create admin user if not exists
         if not User.query.filter_by(is_admin=True).first():

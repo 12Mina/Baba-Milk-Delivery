@@ -3,117 +3,47 @@
 {% block title %}Fresh Dairy Products{% endblock %}
 
 {% block content %}
-<section class="hero">
-    <div class="hero-content">
-        <h1>Fresh Milk, Right at Your Doorstep!</h1>
-        <p>Experience the purity and freshness of Baba Milk products, delivered straight from our farm to your home.</p>
-        <a href="#products-section" class="btn-primary">Shop Now</a>
-    </div>
-</section>
-
-<section class="search-section container">
-    <input type="text" id="product-search-input" placeholder="Search for milk, yogurt, cheese, butter..." class="search-input">
-    <button id="clear-search-btn" class="btn-secondary hidden">Clear Search</button>
-</section>
-
-<section id="products-section" class="all-products">
-    <h2 class="section-title" id="products-section-title">All Our Products</h2>
-    <div class="container">
-        <div id="search-results-section" class="product-grid" style="display: none;">
-            <!-- Search results will be injected here by JS -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Fresh Milk, Right at Your Doorstep!</h1>
+            <p>Experience the purity and freshness of Baba Milk products, delivered straight from our farm to your home.</p>
+            <a href="#products-section" class="btn-primary">Shop Now</a>
         </div>
+    </section>
 
-        <div id="product-categories-display">
-            <section id="milk-products" class="category-section">
-                <h2 class="category-title">🥛 Fresh Milk</h2>
-                <div class="product-grid">
-                    {% for product in milk_products %}
-                    <div class="product-card">
-                        <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
-                        <div class="product-info">
-                            <h3>{{ product.name }}</h3>
-                            <p class="product-description">{{ product.description }}</p>
-                            <p class="product-price">ETB {{ product.price | int }}</p>
-                            <button type="button" class="add-to-cart-btn"
-                                    data-product-id="{{ product.id }}"
-                                    data-name="{{ product.name }}"
-                                    data-price="{{ product.price }}">
-                                Add to Cart
-                            </button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </section>
-
-            {% if False %}
-            <section id="yogurt-products" class="category-section">
-                <h2 class="category-title">🍦 Delicious Yogurt</h2>
-                <div class="product-grid">
-                    {% for product in yogurt_products %}
-                    <div class="product-card">
-                        <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
-                        <div class="product-info">
-                            <h3>{{ product.name }}</h3>
-                            <p class="product-description">{{ product.description }}</p>
-                            <p class="product-price">ETB {{ product.price | int }}</p>
-                            <button type="button" class="add-to-cart-btn"
-                                    data-product-id="{{ product.id }}"
-                                    data-name="{{ product.name }}"
-                                    data-price="{{ product.price }}">
-                                Add to Cart
-                            </button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </section>
-            {% endif %}
-
-            <section id="cheese-products" class="category-section">
-                <h2 class="category-title">🧀 Artisan Cheese</h2>
-                <div class="product-grid">
-                    {% for product in cheese_products %}
-                    <div class="product-card">
-                        <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
-                        <div class="product-info">
-                            <h3>{{ product.name }}</h3>
-                            <p class="product-description">{{ product.description }}</p>
-                            <p class="product-price">ETB {{ product.price | int }}</p>
-                            <button type="button" class="add-to-cart-btn"
-                                    data-product-id="{{ product.id }}"
-                                    data-name="{{ product.name }}"
-                                    data-price="{{ product.price }}">
-                                Add to Cart
-                            </button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </section>
-
-            <section id="butter-products" class="category-section">
-                <h2 class="category-title">🧈 Natural Butter</h2>
-                <div class="product-grid">
-                    {% for product in butter_products %}
-                    <div class="product-card">
-                        <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
-                        <div class="product-info">
-                            <h3>{{ product.name }}</h3>
-                            <p class="product-description">{{ product.description }}</p>
-                            <p class="product-price">ETB {{ product.price | int }}</p>
-                            <button type="button" class="add-to-cart-btn"
-                                    data-product-id="{{ product.id }}"
-                                    data-name="{{ product.name }}"
-                                    data-price="{{ product.price }}">
-                                Add to Cart
-                            </button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </section>
+    <section class="search-section container">
+        <div class="search-input-group">
+            <input type="search" id="product-search-input" placeholder="Search for milk, cheese, butter..." class="search-input">
+            <button id="search-action-btn" class="btn-secondary">Search</button>
         </div>
-    </div>
-</section>
+    </section>
+
+    <section id="products-section" class="all-products">
+        <h2 class="section-title" id="products-section-title">All Our Products</h2>
+        <div class="container">
+            <div id="search-results-section" class="product-grid" style="display: none;">
+                <!-- Search results will be injected here by JS -->
+            </div>
+
+            <!-- All products displayed in a single grid when no search is active -->
+            <div id="all-products-display" class="product-grid">
+                {% for product in all_products %}
+                <div class="product-card">
+                    <img src="{{ url_for('static', filename='images/' + product.image_path) }}" alt="{{ product.name }}">
+                    <div class="product-info">
+                        <h3>{{ product.name }}</h3>
+                        <p class="product-description">{{ product.description }}</p>
+                        <p class="product-price">ETB {{ product.price | int }}</p>
+                        <button type="button" class="add-to-cart-btn"
+                                data-product-id="{{ product.id }}"
+                                data-name="{{ product.name }}"
+                                data-price="{{ product.price }}">
+                            Add to Cart
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
 {% endblock %}

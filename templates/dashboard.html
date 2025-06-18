@@ -22,7 +22,7 @@
             </div>
             <div class="order-details">
                 <p><strong>Order Date:</strong> {{ order.date }}</p>
-                <p><strong>Total:</strong> ETB {{ order.total_amount | float | round(2) }}</p> {# Changed from order.total to order.total_amount #}
+                <p><strong>Total:</strong> ETB {{ order.total | float | round(2) }}</p> {# Corrected to order.total #}
                 <p><strong>Delivery Address:</strong> {{ order.delivery_address }}</p>
                 <p><strong>Delivery Phone:</strong> {{ order.delivery_phone }}</p>
                 <p><strong>Payment Method:</strong> {{ order.payment_method.replace('_', ' ').title() }}</p>

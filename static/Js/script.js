@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check if on the cart page and render items
     if (body.contains(document.getElementById('cart-page-container'))) {
         renderCartItems();
-        initializeCartPageElements(); // Attach event listeners for cart quantity/remove
+        initializeCartPageElements(); // Attach event listeners for cart quantity/remove + checkout button
     }
 
     // Initialize payment options on payment page
@@ -41,6 +41,26 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ======================== 💬 Flash Messages ========================
+function displayFlashMessage(type, message) {
+    const container = document.getElementById('flash-message-container');
+    if (!container) {
+        console.warn("Flash message container not found.");
+        return;
+    }
+
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert ${type}`;
+    alertDiv.textContent = message;
+    container.appendChild(alertDiv);
+
+    // Automatically remove the message after 5 seconds with fade-out
+    setTimeout(() => {
+        alertDiv.style.opacity = '0';
+        alertDiv.style.transform = 'translateY(-20px)';
+        alertDiv.addEventListener('transitionend', () => alertDiv.remove());
+    }, 5000); // 5 seconds
+}
+
 function displayFlaskFlashMessages() {
     const flashDataScript = document.getElementById('flash-messages-data');
     if (!flashDataScript) {
@@ -49,32 +69,18 @@ function displayFlaskFlashMessages() {
 
     try {
         const messages = JSON.parse(flashDataScript.textContent);
-        const container = document.getElementById('flash-message-container');
-        if (!container) {
-            console.warn("Flash message container not found.");
-            return;
-        }
-
         messages.forEach(([category, message]) => {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert ${category}`;
-            alertDiv.textContent = message;
-            container.appendChild(alertDiv);
-
-            // Automatically remove the message after 5 seconds with fade-out
-            setTimeout(() => {
-                alertDiv.style.opacity = '0';
-                alertDiv.style.transform = 'translateY(-20px)';
-                alertDiv.addEventListener('transitionend', () => alertDiv.remove());
-            }, 5000); // 5 seconds
+            displayFlashMessage(category, message); // Use the new function
         });
     } catch (e) {
         console.error("Error parsing flash messages:", e);
     }
 }
 
+
 // ======================== 🛒 Cart Management ========================
 function updateCartCountInHeader() {
+    // This always fetches the count from the session, regardless of login status
     fetch('/get_cart_count')
         .then(response => response.json())
         .then(data => {
@@ -109,11 +115,8 @@ function initializeAddToCartButtons() {
                 if (response.ok && data.success) {
                     displayFlashMessage('success', data.message);
                     updateCartCountInHeader();
-                } else if (response.status === 401) {
-                    displayFlashMessage('warning', data.message || 'Please log in to add items to your cart.');
-                    // Optionally redirect to login or show login modal
-                    window.location.href = Flask.url_for('account');
                 } else {
+                    // Even if not 401, show error if not successful
                     displayFlashMessage('danger', data.message || 'Failed to add item to cart.');
                 }
             } catch (error) {
@@ -135,17 +138,9 @@ function renderCartItems() {
 
     if (!cartItemsList || !cartTotalAmountSpan) return;
 
+    // This always fetches the cart from the session, regardless of login status
     fetch('/get_cart_items')
-        .then(response => {
-            if (response.status === 401) {
-                // User not logged in, show empty cart message
-                emptyCartMessage.style.display = 'block';
-                cartSummarySection.style.display = 'none';
-                displayFlashMessage('info', 'Please log in to view your cart.');
-                return { cart_items: [] }; // Return empty data so the rest of the function can proceed safely
-            }
-            return response.json();
-        })
+        .then(response => response.json()) // Always expect JSON, no 401 special handling
         .then(data => {
             let totalAmount = 0;
             cartItemsList.innerHTML = ''; // Clear existing items
@@ -205,6 +200,26 @@ function initializeCartPageElements() {
     document.querySelectorAll('.remove-item-btn').forEach(button => {
         button.onclick = () => removeCartItem(button.dataset.productId);
     });
+
+    // Handle "Continue to Payment" button click
+    const proceedButton = document.getElementById('proceed-to-payment-btn');
+    const checkoutForm = document.getElementById('checkout-form');
+
+    if (proceedButton && checkoutForm) {
+        proceedButton.addEventListener('click', (event) => {
+            event.preventDefault(); // Always prevent default form submission initially
+
+            // Check if the user is logged in using the global variable from base.html
+            if (window.isUserLoggedIn === true) {
+                console.log("User is logged in. Proceeding to checkout.");
+                checkoutForm.submit(); // Submit the form normally
+            } else {
+                console.log("User is NOT logged in. Redirecting to account page for login/signup.");
+                displayFlashMessage('info', 'Please log in or sign up to proceed to payment.');
+                window.location.href = Flask.url_for('account'); 
+            }
+        });
+    }
 }
 
 async function updateCartItemQuantity(productId, change) {
@@ -226,9 +241,6 @@ async function updateCartItemQuantity(productId, change) {
             displayFlashMessage('success', data.message);
             renderCartItems(); // Re-render the cart to update totals and items
             updateCartCountInHeader();
-        } else if (response.status === 401) {
-            displayFlashMessage('warning', data.message || 'Please log in to update your cart.');
-            window.location.href = Flask.url_for('account');
         } else {
             displayFlashMessage('danger', data.message || 'Failed to update quantity.');
         }
@@ -251,9 +263,6 @@ async function removeCartItem(productId) {
             displayFlashMessage('success', data.message);
             renderCartItems(); // Re-render cart
             updateCartCountInHeader();
-        } else if (response.status === 401) {
-            displayFlashMessage('warning', data.message || 'Please log in to modify your cart.');
-            window.location.href = Flask.url_for('account');
         } else {
             displayFlashMessage('danger', data.message || 'Failed to remove item.');
         }
@@ -345,42 +354,46 @@ function initializeMobileNavToggle() {
 // ======================== 🔍 Product Search ========================
 function initializeProductSearch() {
     const searchInput = document.getElementById('product-search-input');
+    const searchActionButton = document.getElementById('search-action-btn');
     const searchResultsSection = document.getElementById('search-results-section');
-    const productCategoriesDisplay = document.getElementById('product-categories-display');
+    const allProductsDisplay = document.getElementById('all-products-display');
     const productsSectionTitle = document.getElementById('products-section-title');
-    const clearSearchBtn = document.getElementById('clear-search-btn');
 
-    if (!searchInput || !searchResultsSection || !productCategoriesDisplay || !productsSectionTitle || !clearSearchBtn) {
+    if (!searchInput || !searchActionButton || !searchResultsSection || !allProductsDisplay || !productsSectionTitle) {
         console.warn("Search elements not found. Search functionality will not be initialized.");
         return;
     }
 
     let searchTimeout;
 
-    const performSearch = async (query) => {
-        if (query.length < 2 && query.length !== 0) { // Require at least 2 characters for search unless clearing
-            searchResultsSection.innerHTML = '';
-            searchResultsSection.style.display = 'none';
-            productCategoriesDisplay.style.display = 'block';
-            productsSectionTitle.textContent = "All Our Products";
-            clearSearchBtn.classList.add('hidden');
-            return;
+    const updateSearchButton = () => {
+        if (searchInput.value.length > 0) {
+            searchActionButton.textContent = 'Clear Search';
+            searchActionButton.classList.add('btn-secondary');
+            searchActionButton.classList.remove('btn-primary');
+        } else {
+            searchActionButton.textContent = 'Search';
+            searchActionButton.classList.remove('btn-secondary');
+            searchActionButton.classList.add('btn-primary');
         }
+    };
 
+    const performSearch = async (query) => {
         if (query.length === 0) {
             // If query is empty, show all products and hide search results
             searchResultsSection.innerHTML = '';
             searchResultsSection.style.display = 'none';
-            productCategoriesDisplay.style.display = 'block';
+            allProductsDisplay.style.display = 'grid'; // Show all products
             productsSectionTitle.textContent = "All Our Products";
-            clearSearchBtn.classList.add('hidden');
+            updateSearchButton(); // Ensure button text is "Search"
             return;
         }
+        
+        updateSearchButton(); 
 
         productsSectionTitle.textContent = `Search Results for "${query}"`;
-        productCategoriesDisplay.style.display = 'none'; // Hide category sections
+        allProductsDisplay.style.display = 'none'; // Hide all products section
         searchResultsSection.style.display = 'grid'; // Show search results container
-        clearSearchBtn.classList.remove('hidden'); // Show clear button
 
         searchResultsSection.innerHTML = '<p style="text-align: center; grid-column: 1 / -1; padding: 20px;">Searching...</p>';
 
@@ -420,17 +433,38 @@ function initializeProductSearch() {
         }
     };
 
+    // Event listener for typing in search input
     searchInput.addEventListener('input', (event) => {
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
             performSearch(event.target.value);
         }, 300); // Debounce for 300ms
+        updateSearchButton(); // Update button text immediately on input
     });
 
-    clearSearchBtn.addEventListener('click', () => {
-        searchInput.value = ''; // Clear input
-        performSearch(''); // Trigger search with empty query to show all products
+    // Event listener for click on the action button
+    searchActionButton.addEventListener('click', () => {
+        if (searchActionButton.textContent === 'Clear Search') {
+            searchInput.value = ''; // Clear the input field
+            performSearch(''); // Perform search with empty query to show all products
+        } else {
+            // If button says "Search", trigger search with current input value
+            performSearch(searchInput.value);
+        }
     });
+
+    // Handle pressing Enter key in search input
+    searchInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent default form submission
+            clearTimeout(searchTimeout); // Clear any pending debounced search
+            performSearch(searchInput.value); // Perform search immediately
+        }
+    });
+
+
+    // Initial update of the button state on page load
+    updateSearchButton();
 }
 
 
