@@ -16,7 +16,7 @@ load_dotenv()
 
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER") # Your Twilio phone number (e.g., "+15017122661")
+TWILIO_PHONE_NUMBER = os.environ.get("+919034653116") # Your Twilio phone number (e.g., "+15017122661")
 
 # Initialize Twilio client only if credentials are provided
 if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
