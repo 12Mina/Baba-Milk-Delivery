@@ -6,20 +6,28 @@
 <div class="auth-container" id="account-page-container">
     <div id="otp-entry-container">
         <h2>Access Your Account</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
         <form id="send-otp-form" method="POST" action="{{ url_for('send_otp') }}">
+            <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
             <div class="form-group">
-                <label for="name"><b>Full Name (for new accounts)</b></label>
-                <input type="text" placeholder="Enter Full Name" name="name" id="name" autocomplete="name">
-                <small class="help-text">Only required if you are signing up for a new account. Can be left empty for login.</small>
+                <label for="name">Full Name (for signup):</label>
+                <input type="text" placeholder="Enter Full Name" name="name" id="name-field" autocomplete="name">
+                <small class="help-text">Required for new accounts; leave empty for login.</small>
             </div>
-            
             <div class="form-group">
-                <label for="phone"><b>Phone Number</b></label>
-                <input type="tel" placeholder="Enter Phone Number (e.g., 09xxxxxxxx)" name="phone" id="phone" required autocomplete="tel" pattern="[0-9]{10}">
-                <small class="help-text">Your 10-digit phone number (e.g., 0912345678).</small>
+                <label for="phone">Phone Number:</label>
+                <input type="tel" placeholder="e.g., +12025550123 or +251912345678" name="phone" id="phone" required autocomplete="tel">
+                <small class="help-text">Enter your international phone number starting with + (e.g., +12025550123).</small>
             </div>
-
-            <button type="submit" class="btn-primary">Submit</button> {# Single "Submit" button #}
+            <button type="submit" class="btn-primary">Send OTP</button>
         </form>
     </div>
 </div>
@@ -27,7 +35,19 @@
 
 {% block body_extra %}
 <script>
-    // No specific JS for modal/password toggle on this page anymore.
-    // The form submits directly to Flask for OTP initiation.
+    // Auto-focus name field if redirected with #name-field
+    if (window.location.hash === '#name-field') {
+        document.getElementById('name-field').focus();
+    }
+
+    // Client-side phone number validation
+    document.getElementById('send-otp-form').addEventListener('submit', function(event) {
+        const phoneInput = document.getElementById('phone').value;
+        const phoneRegex = /^\+\d{10,15}$/;
+        if (!phoneRegex.test(phoneInput)) {
+            event.preventDefault();
+            alert('Please enter a valid international phone number starting with + (e.g., +12025550123 or +251912345678).');
+        }
+    });
 </script>
 {% endblock %}

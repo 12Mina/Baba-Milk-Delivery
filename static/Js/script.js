@@ -86,8 +86,8 @@ function updateCartCountInHeader() {
         .then(data => {
             const cartCountElement = document.getElementById('cart-count');
             if (cartCountElement) {
-                cartCountElement.textContent = data.cart_count || '0';
-                cartCountElement.style.display = data.cart_count > 0 ? 'block' : 'none';
+                cartCountElement.textContent = data.count || '0';
+                cartCountElement.style.display = data.count > 0 ? 'block' : 'none'; 
             }
         })
         .catch(error => console.error('Error fetching cart count:', error));
@@ -206,22 +206,12 @@ function initializeCartPageElements() {
     const checkoutForm = document.getElementById('checkout-form');
 
     if (proceedButton && checkoutForm) {
-        proceedButton.addEventListener('click', (event) => {
-            event.preventDefault(); // Always prevent default form submission initially
-
-            // Check if the user is logged in using the global variable from base.html
-            if (window.isUserLoggedIn === true) {
-                console.log("User is logged in. Proceeding to checkout.");
-                checkoutForm.submit(); // Submit the form normally
-            } else {
-                console.log("User is NOT logged in. Redirecting to account page for login/signup.");
-                displayFlashMessage('info', 'Please log in or sign up to proceed to payment.');
-                window.location.href = Flask.url_for('account'); 
-            }
-        });
-    }
+    proceedButton.addEventListener('click', (event) => {
+        event.preventDefault(); 
+        checkoutForm.submit(); 
+    });
 }
-
+}
 async function updateCartItemQuantity(productId, change) {
     const currentQuantityElement = document.querySelector(`.quantity-controls [data-product-id="${productId}"]`).previousElementSibling;
     let currentQuantity = parseInt(currentQuantityElement.textContent);

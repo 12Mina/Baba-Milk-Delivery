@@ -1,67 +1,54 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, g, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from datetime import datetime, timedelta
 import json
-import secrets
-import functools
+import random
+import string
+from functools import wraps
 from flask_migrate import Migrate
-import random 
+from dotenv import load_dotenv
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
-from dotenv import load_dotenv
+import re
 
+# Load environment variables from .env file
 load_dotenv()
 
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.environ.get("+919034653116")
-
-if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
-    twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-else:
-    twilio_client = None
-
+# Initialize Flask app
 app = Flask(__name__)
-
-# --- Session & Cookie Config ---
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key_baba_milk_very_secret_and_long")
 app.config['SESSION_COOKIE_NAME'] = 'baba_session'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = False  # Only for local testing
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
-# --- Database Configuration ---
-db_url = os.environ.get("DATABASE_URL")
-if db_url and db_url.startswith("postgres://"):
+# Database Configuration
+db_url = os.environ.get("DATABASE_URL", "sqlite:///baba_milk.db")
+if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://")
-else:
-    db_url = "sqlite:///baba_milk.db"
-
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
-# --- Database Models ---
+# Twilio Configuration
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER")
+twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN else None
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    lastname = db.Column(db.String(100), nullable=True)
     phone = db.Column(db.String(20), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=True)
-    password = db.Column(db.String(200), nullable=False)
+    password = db.Column(db.String(255), nullable=False)  # ✅ Add this line
     is_admin = db.Column(db.Boolean, default=False)
     address = db.Column(db.String(200), nullable=True)
-
     orders = db.relationship('Order', backref='customer', lazy=True)
-
-    def __repr__(self):
-        return f"<User {self.phone}>"
 
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -71,22 +58,14 @@ class Product(db.Model):
     image_path = db.Column(db.String(100), nullable=True)
     description = db.Column(db.Text, nullable=True)
 
-    def __repr__(self):
-        return f"<Product {self.name}>"
-
 class CartItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     quantity = db.Column(db.Integer, default=1)
-
     user = db.relationship('User', backref='cart_items')
     product = db.relationship('Product')
-
     __table_args__ = (db.UniqueConstraint('user_id', 'product_id', name='_user_product_uc'),)
-
-    def __repr__(self):
-        return f"<CartItem User:{self.user_id} Product:{self.product.id} Qty:{self.quantity}>"
 
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -101,20 +80,7 @@ class Order(db.Model):
 
     @property
     def items(self):
-        item_names = [f"{item.product.name} (x{item.quantity})" for item in self.order_items]
-        return ", ".join(item_names)
-
-    @property
-    def customer_name(self):
-        return self.customer.name if self.customer else "N/A"
-
-    @property
-    def customer_phone(self):
-        return self.customer.phone if self.customer else "N/A"
-
-    @property
-    def customer_email(self):
-        return self.customer.email if self.customer else "N/A"
+        return ", ".join(f"{item.product.name} (x{item.quantity})" for item in self.order_items)
 
     @property
     def date(self):
@@ -137,180 +103,251 @@ class OrderItem(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     price_at_purchase = db.Column(db.Float, nullable=False)
-
     order = db.relationship('Order', backref='order_items')
     product = db.relationship('Product')
 
-    def __repr__(self):
-        return f"<OrderItem Order:{self.order_id} Product:{self.product.name} Qty:{self.quantity}>"
-
-# --- Context Processor ---
+# Context Processor
 @app.context_processor
-def inject_datetime():
-    return {'datetime': datetime}
+def utility_processor():
+    return dict(current_year=datetime.now().year)
 
-# --- Before Request ---
+# Before Request Hook
 @app.before_request
 def load_logged_in_user():
     user_id = session.get('user_id')
     g.user = None
-    print(f"\n--- BEFORE REQUEST HOOK ({datetime.now().strftime('%H:%M:%S')}) ---")
-    print(f"  Request Method: {request.method}, Path: {request.path}")
-    print(f"  Session content (on entry): {dict(session)}")
-    print(f"  Attempting to load user for session user_id: {user_id}")
-
-    # Check for expired OTP and clean up session
     otp_timestamp = session.get('otp_timestamp')
     if otp_timestamp and (datetime.now().timestamp() - otp_timestamp > 300):
-        print("  WARNING: OTP expired. Clearing OTP-related session data.")
         for key in ['otp_code', 'otp_phone', 'otp_timestamp', 'signup_name', 'action_type']:
             session.pop(key, None)
         session.modified = True
         if request.path in ['/verify_otp', '/resend_otp']:
             flash("Your OTP has expired. Please request a new one.", 'warning')
-
-    if user_id is not None:
+    if user_id:
         try:
             g.user = User.query.get(user_id)
             if g.user:
-                print(f"  SUCCESS: g.user loaded: {g.user.name} (ID: {g.user.id}, Is Admin: {g.user.is_admin})")
                 session['user_name'] = g.user.name
                 session['is_admin'] = g.user.is_admin
                 session.permanent = True
                 session.modified = True
-                print(f"  Session after g.user load and modification: {dict(session)}")
             else:
-                print(f"  WARNING: No user found in DB for session user_id: {user_id}. Clearing session.")
                 session.pop('user_id', None)
                 session.pop('user_name', None)
                 session.pop('is_admin', None)
                 session.modified = True
-                print(f"  Session after clear: {dict(session)}")
+                db.session.rollback()
         except Exception as e:
-            print(f"  ERROR: Exception loading user for ID {user_id}: {e}. Clearing session and rolling back.")
             session.pop('user_id', None)
             session.pop('user_name', None)
             session.pop('is_admin', None)
             session.modified = True
             db.session.rollback()
-    else:
-        print("  INFO: No user_id found in session.")
-    print(f"  Final g.user status (is not None): {g.user is not None}")
-    print(f"--- END BEFORE REQUEST HOOK ---")
 
-# --- Route Decorators ---
+# Decorators
 def login_required(f):
-    @functools.wraps(f)
+    @wraps(f)
     def decorated_function(*args, **kwargs):
-        print(f"\n--- LOGIN REQUIRED DECORATOR INVOKED for {request.path} ({datetime.now().strftime('%H:%M:%S')}) ---")
-        print(f"  Current session state at decorator entry: {dict(session)}")
-        print(f"  Checking for 'user_id' in session: {'user_id' in session}")
         if 'user_id' not in session:
-            print("  FAIL: User ID NOT found in session. Redirecting to /account.")
             session['next'] = request.url
             flash('Please login to access this page.', 'warning')
             return redirect(url_for('account'))
-        print("  SUCCESS: User ID found in session. Proceeding with route function.")
         return f(*args, **kwargs)
     return decorated_function
 
 def admin_required(f):
-    @functools.wraps(f)
+    @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session or not session.get('is_admin'):
-            flash('Access denied. You are not authorized to view this page.', 'danger')
-            if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
-                return jsonify(success=False, message="Authorization required (Admin access)."), 403
-            return redirect(url_for('home'))
+            if 'user_id' in session:
+                flash('Access denied. You are not authorized to view this page.', 'danger')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Please login as an admin to access this page.', 'warning')
+                session['next'] = request.url
+                return redirect(url_for('account'))
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Routes ---
+# Routes
 @app.route('/')
 @app.route('/home')
 def home():
-    milk_products = Product.query.filter_by(category='milk').all()
-    cheese_products = Product.query.filter_by(category='cheese').all()
-    butter_products = Product.query.filter_by(category='butter').all()
     all_products = Product.query.all()
-    return render_template('home.html',
-                           milk_products=milk_products,
-                           cheese_products=cheese_products,
-                           butter_products=butter_products,
-                           all_products=all_products,
-                           datetime=datetime)
+    return render_template('home.html', all_products=all_products)
 
 @app.route('/account', methods=['GET'])
 def account():
-    return render_template('account.html', datetime=datetime)
+    return render_template('account.html')
 
 @app.route('/send_otp', methods=['POST'])
 def send_otp():
+    print("=== Received POST to /send_otp ===")
     phone_raw = request.form.get('phone')
-    name = request.form.get('name')
-    session['next'] = request.form.get('next', session.get('next', url_for('home')))
-
-    if not phone_raw or not phone_raw.replace('+', '').isdigit() or len(phone_raw.replace('+', '')) < 9:
-        flash("Please enter a valid phone number (digits only, at least 9 digits, optional '+').", 'danger')
+    name = request.form.get('name').strip() if request.form.get('name') else None
+    next_url = request.form.get('next', session.get('next', url_for('home')))
+    print(f"Input: phone_raw={phone_raw}, name={name}, next_url={next_url}")
+    
+    if not phone_raw:
+        flash("Phone number is required.", 'danger')
+        print("Error: Phone number missing")
         return redirect(url_for('account'))
-
-    if phone_raw.startswith('09') and len(phone_raw) == 10:
-        phone = '+251' + phone_raw[1:]
-    elif not phone_raw.startswith('+'):
-        phone = '+251' + phone_raw
-    else:
-        phone = phone_raw
-
-    otp = str(random.randint(100000, 999999))
+    
+    phone_regex = r'^\+\d{10,15}$'
+    if not re.match(phone_regex, phone_raw):
+        flash("Please enter a valid international phone number (e.g., +12025550123 or +251912345678).", 'danger')
+        print(f"Error: Invalid phone number format: {phone_raw}")
+        return redirect(url_for('account'))
+    
+    phone = phone_raw
+    print(f"Normalized phone: {phone}")
+    
+    user_exists = User.query.filter_by(phone=phone).first()
+    if not user_exists and not name:
+        flash("Full name is required for signup.", 'danger')
+        print("Error: Name missing for signup")
+        return redirect(url_for('account') + '#name-field')
+    
+    otp = ''.join(random.choices(string.digits, k=6))
     session['otp_code'] = otp
     session['otp_phone'] = phone
     session['otp_timestamp'] = datetime.now().timestamp()
-    session['action_type'] = 'login' if User.query.filter_by(phone=phone).first() else 'signup'
-    if session['action_type'] == 'signup' and not name:
-        flash("Full name is required for signup.", 'danger')
-        return redirect(url_for('account'))
-    if name:
-        session['signup_name'] = name
+    session['action_type'] = 'login' if user_exists else 'signup'
+    session['signup_name'] = name if name else None
+    session['next'] = next_url
     session.modified = True
-
-    print(f"🔐 OTP for {phone} is: {otp}")
-
+    print(f"Session set: OTP={otp}, Phone={phone}, Action={session['action_type']}, Name={name}")
+    
     if twilio_client and TWILIO_PHONE_NUMBER:
+        print(f"Attempting Twilio SMS to {phone} from {TWILIO_PHONE_NUMBER}")
         try:
             message = twilio_client.messages.create(
                 to=phone,
                 from_=TWILIO_PHONE_NUMBER,
                 body=f"Your Baba Milk App verification code is: {otp}"
             )
-            print(f"Twilio message SID: {message.sid}")
+            print(f"Twilio success: SID={message.sid}")
             flash(f"An OTP has been sent to {phone}.", 'info')
         except TwilioRestException as e:
-            app.logger.error(f"Twilio error sending OTP to {phone}: {e}")
-            flash("Failed to send OTP. Please try again or check your phone number.", 'danger')
-            return redirect(url_for('account'))
+            print(f"Twilio error sending OTP to {phone}: {e}")
+            flash(f"Failed to send OTP: {str(e)}. Please check your phone number or use console OTP.", 'danger')
+            print(f"🔐 OTP for {phone}: {otp} (Twilio failed, using console fallback)")
         except Exception as e:
-            app.logger.error(f"General error sending OTP to {phone}: {e}")
+            print(f"General error sending OTP to {phone}: {e}")
             flash("An unexpected error occurred while sending OTP. Please try again.", 'danger')
             return redirect(url_for('account'))
     else:
+        print(f"🔐 OTP for {phone}: {otp} (No Twilio client, using console)")
         flash(f"OTP simulation: {otp}. Please check your console.", 'info')
+    
+    print(f"Redirecting to verify_otp with phone={phone}")
+    return redirect(url_for('verify_otp', phone=phone))
 
-    return redirect(url_for('verify_otp_page', phone=phone))
+@app.route('/verify_otp', methods=['GET', 'POST'])
+def verify_otp():
+    phone = session.get('otp_phone')
+    if not phone:
+        flash("Session expired or no OTP request found. Please start again.", 'danger')
+        return redirect(url_for('account'))
+
+    if request.method == 'POST':
+        user_otp = request.form.get('otp', '').strip()
+        stored_otp = session.get('otp_code')
+        otp_timestamp = session.get('otp_timestamp')
+        action_type = session.get('action_type')
+
+        if not all([user_otp, stored_otp, action_type, otp_timestamp]):
+            flash("Missing verification data. Please try again.", 'danger')
+            session.clear()
+            session.modified = True
+            return redirect(url_for('account'))
+
+        # Check OTP expiry (5 min = 300 sec)
+        if datetime.now().timestamp() > otp_timestamp + 300:
+            flash("OTP has expired. Please request a new one.", 'danger')
+            session.clear()
+            session.modified = True
+            return redirect(url_for('account'))
+
+        if user_otp != stored_otp:
+            flash("Invalid OTP. Please try again.", 'danger')
+            return redirect(url_for('verify_otp', phone=phone))
+
+        user = User.query.filter_by(phone=phone).first()
+
+        if action_type == 'signup':
+            name = session.get('signup_name')  # ✅ FIXED: correct key for name
+            if user:
+                flash("Account already exists. Please log in.", 'warning')
+                session.clear()
+                session.modified = True
+                return redirect(url_for('account'))
+
+            if not name:
+                flash("Signup failed. Missing name.", 'danger')
+                session.clear()
+                session.modified = True
+                return redirect(url_for('account'))
+
+            hashed_password = generate_password_hash(stored_otp)
+            user = User(name=name, phone=phone, password=hashed_password)
+            db.session.add(user)
+            db.session.commit()
+            flash("Account created successfully!", 'success')
+
+        elif action_type == 'login':
+            if not user:
+                flash("No account found for this phone number.", 'danger')
+                session.clear()
+                session.modified = True
+                return redirect(url_for('account'))
+            flash(f"Welcome back, {user.name}!", 'success')
+
+        # ✅ Set user session
+        session['user_id'] = user.id
+        session['user_name'] = user.name
+        session['is_admin'] = user.is_admin
+        session.permanent = True
+
+        # ✅ Merge guest cart to user cart
+        guest_cart = session.pop('cart', {})
+        if guest_cart:
+            try:
+                for pid_str, item in guest_cart.items():
+                    pid = int(pid_str)
+                    qty = int(item.get('quantity', 1))
+                    existing_item = CartItem.query.filter_by(user_id=user.id, product_id=pid).first()
+                    if existing_item:
+                        existing_item.quantity += qty
+                    else:
+                        db.session.add(CartItem(user_id=user.id, product_id=pid, quantity=qty))
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                flash("Unable to merge cart items. Please review your cart.", 'warning')
+
+        # ✅ Clean up OTP-related session keys
+        for key in ['otp_code', 'otp_phone', 'otp_timestamp', 'signup_name', 'action_type']:
+            session.pop(key, None)
+        session.modified = True
+
+        next_url = session.pop('next', url_for('dashboard'))
+        return redirect(next_url)
+
+    # GET method fallback
+    return render_template('verify_otp.html', phone=phone)
 
 @app.route('/resend_otp', methods=['POST'])
 def resend_otp():
     phone = session.get('otp_phone')
     action_type = session.get('action_type')
-
     if not phone or not action_type:
         flash("No active OTP request found. Please start from the account page.", 'danger')
         return redirect(url_for('account'))
-
-    otp = str(random.randint(100000, 999999))
+    otp = ''.join(random.choices(string.digits, k=6))
     session['otp_code'] = otp
     session['otp_timestamp'] = datetime.now().timestamp()
     session.modified = True
-
     if twilio_client and TWILIO_PHONE_NUMBER:
         try:
             message = twilio_client.messages.create(
@@ -321,204 +358,120 @@ def resend_otp():
             print(f"Twilio message SID (resend): {message.sid}")
             flash(f"A new OTP has been sent to {phone}.", 'info')
         except TwilioRestException as e:
-            app.logger.error(f"Twilio error resending OTP to {phone}: {e}")
+            print(f"Twilio error resending OTP to {phone}: {e}")
             flash("Failed to resend OTP. Please try again or check your phone number.", 'danger')
             return redirect(url_for('account'))
         except Exception as e:
-            app.logger.error(f"General error resending OTP to {phone}: {e}")
+            print(f"General error resending OTP to {phone}: {e}")
             flash("An error occurred while resending OTP. Please try again.", 'danger')
             return redirect(url_for('account'))
     else:
-        print(f"\n--- RESENT OTP for {phone} is: {otp} (Action: {action_type}) ---\n")
+        print(f"Resent OTP for {phone}: {otp}")
         flash(f"A new OTP has been sent to {phone}. Check your console.", 'info')
+    return redirect(url_for('verify_otp', phone=phone))
 
-    return redirect(url_for('verify_otp_page', phone=phone))
-
-@app.route('/verify_otp', methods=['GET'])
-def verify_otp_page():
-    phone = session.get('otp_phone')
-    if not phone:
-        flash("Session expired or no OTP request found. Please start again.", 'danger')
-        return redirect(url_for('account'))
-    return render_template('verify_otp.html', phone=phone, datetime=datetime)
-
-@app.route('/verify_otp', methods=['POST'])
-def verify_otp():
-    user_otp = request.form.get('otp')
-    phone = session.get('otp_phone')
-    stored_otp = session.get('otp_code')
-    otp_timestamp = session.get('otp_timestamp')
-    action_type = session.get('action_type')
-
-    if not all([user_otp, phone, stored_otp, action_type, otp_timestamp]):
-        flash("Missing OTP verification data. Please try again from the account page.", 'danger')
-        session.clear()
-        session.modified = True
-        return redirect(url_for('account'))
-
-    if datetime.now().timestamp() > otp_timestamp + 300:
-        flash("OTP has expired. Please request a new one.", 'danger')
-        session.clear()
-        session.modified = True
-        return redirect(url_for('account'))
-
-    if user_otp != stored_otp:
-        flash("Invalid OTP. Please try again.", 'danger')
-        return redirect(url_for('verify_otp_page', phone=phone))
-
-    user = User.query.filter_by(phone=phone).first()
-
-    if action_type == 'signup':
-        name = session.get('signup_name')
-        if user:
-            flash("Account already exists. Please log in.", 'warning')
-            session.clear()
-            session.modified = True
-            return redirect(url_for('account'))
-        if not name:
-            flash("Signup failed. Missing name required for signup.", 'danger')
-            session.clear()
-            session.modified = True
-            return redirect(url_for('account'))
-
-        user = User(name=name, phone=phone, password=generate_password_hash(stored_otp))
-        db.session.add(user)
-        db.session.commit()
-        flash("Account created successfully!", 'success')
-
-    elif action_type == 'login':
-        if not user:
-            flash("Login failed. No account found for this phone number.", 'danger')
-            session.clear()
-            session.modified = True
-            return redirect(url_for('account'))
-        flash(f"Welcome back, {user.name}!", 'success')
-
-    session['user_id'] = user.id
-    session['user_name'] = user.name
-    session['is_admin'] = user.is_admin
-    session.permanent = True
-
-    guest_cart = session.pop('cart', {})
-    if guest_cart and user.id:
-        try:
-            for pid_str, item in guest_cart.items():
-                pid = int(pid_str)
-                qty = int(item.get('quantity', 1))
-                existing_item = CartItem.query.filter_by(user_id=user.id, product_id=pid).first()
-                if existing_item:
-                    existing_item.quantity += qty
-                else:
-                    db.session.add(CartItem(user_id=user.id, product_id=pid, quantity=qty))
-            db.session.commit()
-        except Exception as e:
-            app.logger.error(f"Error merging cart for user {user.id}: {e}")
-            db.session.rollback()
-            flash("Unable to merge your cart items. Please review your cart.", 'warning')
-
-    for key in ['otp_code', 'otp_phone', 'otp_timestamp', 'signup_name', 'action_type']:
-        session.pop(key, None)
-    session.modified = True
-
-    next_url = session.pop('next', url_for('dashboard' if user else 'home'))
-    return redirect(next_url)
-
-@app.route('/logout')
+@app.route('/cart', methods=['GET', 'POST'])
 @login_required
-def logout():
-    session.pop('user_id', None)
-    session.pop('user_name', None)
-    session.pop('is_admin', None)
-    session.pop('delivery_info', None)
-    session.pop('cart', None)
-    session.modified = True
-    flash('Logged out successfully.', 'info')
-    return redirect(url_for('home'))
+def cart():
+    user_address = g.user.address if g.user and g.user.address else ''
+    user_phone = g.user.phone if g.user and g.user.phone else ''
+    if request.method == 'POST':
+        delivery_name = request.form.get('delivery_name')
+        delivery_phone = request.form.get('delivery_phone')
+        delivery_address = request.form.get('delivery_address')
+        errors = []
+        if not delivery_phone:
+            errors.append("Please provide a delivery phone number.")
+        if not delivery_address:
+            errors.append("Please provide a delivery address.")
+        if delivery_phone and (not delivery_phone.replace('+', '').isdigit() or len(delivery_phone.replace('+', '')) < 9):
+            errors.append("Please enter a valid phone number (digits only, at least 9 digits, optional '+').")
+        if errors:
+            for error in errors:
+                flash(error, 'danger')
+            session['delivery_info'] = {
+                'name': delivery_name or '',
+                'phone': delivery_phone or '',
+                'address': delivery_address or ''
+            }
+            session.modified = True
+            return redirect(url_for('cart'))
+        if delivery_phone.startswith('09') and len(delivery_phone) == 10:
+            delivery_phone = '+251' + delivery_phone[1:]
+        elif not delivery_phone.startswith('+'):
+            delivery_phone = '+251' + delivery_phone
+        cart = session.get('cart', {})
+        if not cart:
+            flash("Your cart is empty. Please add items before checking out.", 'warning')
+            session['delivery_info'] = {
+                'name': delivery_name or '',
+                'phone': delivery_phone,
+                'address': delivery_address
+            }
+            session.modified = True
+            return redirect(url_for('cart'))
+        total_amount = sum(float(item['price']) * item['quantity'] for item in cart.values())
+        session['delivery_info'] = {
+            'name': delivery_name or '',
+            'phone': delivery_phone,
+            'address': delivery_address,
+            'total_amount': total_amount,
+            'cart_items': list(cart.values())
+        }
+        session.modified = True
+        return redirect(url_for('payment'))
+    return render_template('cart.html', user_address=user_address, user_phone=user_phone, delivery_info=session.get('delivery_info', {}))
 
 @app.route('/add_to_cart', methods=['POST'])
 def add_to_cart():
     try:
         data = request.get_json()
-        if not data or not isinstance(data.get('product_id'), str):
-            return jsonify({'success': False, 'message': 'Invalid product ID format.'}), 400
-
-        product_id_str = str(data['product_id'])
-        try:
-            product_id_int = int(product_id_str)
-        except ValueError:
-            return jsonify({'success': False, 'message': 'Invalid product ID format.'}), 400
-
-        product = Product.query.get(product_id_int)
+        product_id = str(data.get('product_id'))
+        quantity = int(data.get('quantity', 1))
+        product = Product.query.get(int(product_id))
         if not product:
-            return jsonify({'success': False, 'message': 'Product not found'}), 404
-
-        if 'cart' not in session:
-            session['cart'] = {}
-
-        cart = session['cart']
-        if product_id_str in cart:
-            cart[product_id_str]['quantity'] += 1
+            return jsonify({'success': False, 'message': 'Product not found.'}), 404
+        cart = session.get('cart', {})
+        if product_id in cart:
+            cart[product_id]['quantity'] += quantity
         else:
-            cart[product_id_str] = {
-                'id': product_id_str,
+            cart[product_id] = {
                 'name': product.name,
                 'price': float(product.price),
                 'image_path': product.image_path or 'default.png',
-                'quantity': 1
+                'quantity': quantity
             }
-
         session['cart'] = cart
         session.modified = True
-
-        total_quantity = sum(item['quantity'] for item in cart.values())
-        return jsonify({'success': True, 'message': f'{product.name} added to cart!', 'total_quantity': total_quantity})
-
+        return jsonify({'success': True, 'cart_count': sum(item['quantity'] for item in cart.values())})
     except Exception as e:
-        app.logger.error(f"Error adding to cart: {e}")
-        db.session.rollback()
-        return jsonify({'success': False, 'message': 'An error occurred while adding to cart.'}), 500
+        print(f"Error adding to cart: {e}")
+        return jsonify({'success': False, 'message': 'Error adding to cart.'}), 500
 
 @app.route('/get_cart_count')
 def get_cart_count():
     try:
-        total_quantity = 0
-        if 'cart' in session:
-            cart = session['cart']
-            if not isinstance(cart, dict):
-                app.logger.error(f"Invalid cart format in session: {cart}")
-                session.pop('cart', None)
-                session.modified = True
-                return jsonify({'cart_count': 0}), 200
-            total_quantity = sum(item.get('quantity', 0) for item in cart.values() if isinstance(item, dict))
-        return jsonify({'cart_count': total_quantity}), 200
-    except Exception as e:
-        app.logger.error(f"Error in get_cart_count: {e}")
-        return jsonify({'cart_count': 0}), 200
+        total_quantity = sum(item['quantity'] for item in session.get('cart', {}).values() if isinstance(item, dict))
+        return jsonify({'count': total_quantity}), 200
+    except Exception:
+        return jsonify({'count': 0}), 200
 
 @app.route('/get_cart_items')
 def get_cart_items():
     try:
         cart_data = session.get('cart', {})
-        if not isinstance(cart_data, dict):
-            app.logger.error(f"Invalid cart format in session: {cart_data}")
-            session.pop('cart', None)
-            session.modified = True
-            return jsonify({'cart_items': []}), 200
-
-        items_list = []
-        for product_id_str, item_data in cart_data.items():
-            if not isinstance(item_data, dict):
-                continue
-            items_list.append({
-                'id': product_id_str,
-                'name': item_data.get('name', 'Unknown'),
-                'price': item_data.get('price', 0.0),
-                'image_url': url_for('static', filename='images/' + item_data.get('image_path', 'default.png')),
-                'quantity': item_data.get('quantity', 1)
-            })
+        items_list = [
+            {
+                'id': pid,
+                'name': item.get('name', 'Unknown'),
+                'price': item.get('price', 0.0),
+                'image_url': url_for('static', filename='images/' + item.get('image_path', 'default.png')),
+                'quantity': item.get('quantity', 1)
+            }
+            for pid, item in cart_data.items() if isinstance(item, dict)
+        ]
         return jsonify({'cart_items': items_list}), 200
-    except Exception as e:
-        app.logger.error(f"Error in get_cart_items: {e}")
+    except Exception:
         return jsonify({'cart_items': []}), 200
 
 @app.route('/update_cart_quantity', methods=['POST'])
@@ -527,349 +480,230 @@ def update_cart_quantity():
         data = request.get_json()
         product_id = str(data.get('product_id'))
         new_quantity = data.get('quantity')
-
         if new_quantity is None or not isinstance(new_quantity, int) or new_quantity < 0:
-            return jsonify({'success': False, 'message': 'Invalid product ID or quantity.'}), 400
-
+            return jsonify({'success': False, 'message': 'Invalid quantity.'}), 400
         cart = session.get('cart', {})
-        if not isinstance(cart, dict):
-            app.logger.error(f"Invalid cart format in session: {cart}")
-            session.pop('cart', None)
-            session.modified = True
-            return jsonify({'success': False, 'message': 'Cart data corrupted. Please add items again.'}), 500
-
         if product_id not in cart:
-            return jsonify({'success': False, 'message': 'Item not found in cart.'}), 404
-
+            return jsonify({'success': False, 'message': 'Item not in cart.'}), 404
         if new_quantity == 0:
-            item_name = cart[product_id].get('name', 'Item')
+            item_name = cart[product_id]['name']
             del cart[product_id]
             message = f"Removed {item_name} from cart."
         else:
             cart[product_id]['quantity'] = new_quantity
-            message = f"Quantity of {cart[product_id].get('name', 'Item')} updated to {new_quantity}."
-
+            message = f"Updated {cart[product_id]['name']} to {new_quantity}."
         session['cart'] = cart
         session.modified = True
-        
         return jsonify({'success': True, 'message': message})
-
     except Exception as e:
-        app.logger.error(f"Error updating cart quantity: {e}")
-        db.session.rollback()
-        return jsonify({'success': False, 'message': 'An error occurred while updating quantity.'}), 500
+        print(f"Error updating cart quantity: {e}")
+        return jsonify({'success': False, 'message': 'Error updating cart.'}), 500
 
 @app.route('/remove_from_cart', methods=['POST'])
 def remove_from_cart():
     try:
         data = request.get_json()
         product_id = str(data.get('product_id'))
-
         cart = session.get('cart', {})
-        if not isinstance(cart, dict):
-            app.logger.error(f"Invalid cart format in session: {cart}")
-            session.pop('cart', None)
-            session.modified = True
-            return jsonify({'success': False, 'message': 'Cart data corrupted. Please add items again.'}), 500
-
         if product_id not in cart:
-            return jsonify({'success': False, 'message': 'Item not found in cart.'}), 404
-
-        item_name = cart[product_id].get('name', 'Item')
+            return jsonify({'success': False, 'message': 'Item not in cart.'}), 404
+        item_name = cart[product_id]['name']
         del cart[product_id]
         session['cart'] = cart
         session.modified = True
-
         return jsonify({'success': True, 'message': f'{item_name} removed from cart.'})
-
     except Exception as e:
-        app.logger.error(f"Error removing item from cart: {e}")
-        db.session.rollback()
-        return jsonify({'success': False, 'message': 'An error occurred while removing item.'}), 500
+        print(f"Error removing item from cart: {e}")
+        return jsonify({'success': False, 'message': 'Error removing item.'}), 500
 
-@app.route('/cart')
-def cart():
-    user_address = g.user.address if g.user and g.user.address else ''
-    user_phone = g.user.phone if g.user and g.user.phone else ''
-    return render_template('cart.html', user_address=user_address, user_phone=user_phone, datetime=datetime)
-
-@app.route('/checkout', methods=['POST'])
-@login_required
-def checkout():
-    session['next'] = url_for('payment')
-    delivery_name = request.form.get('delivery_name', session.get('user_name', '')) 
-    delivery_phone = request.form.get('delivery_phone')
-    delivery_address = request.form.get('delivery_address')
-
-    if not all([delivery_phone, delivery_address]): 
-        flash("Please provide both delivery phone and address.", 'danger')
-        return redirect(url_for('cart'))
-
-    if not delivery_phone.replace('+', '').isdigit() or len(delivery_phone.replace('+', '')) < 9:
-        flash("Please enter a valid phone number (digits only, at least 9 digits, optional '+').", 'danger')
-        return redirect(url_for('cart'))
-        
-    if delivery_phone.startswith('09') and len(delivery_phone) == 10:
-        delivery_phone = '+251' + delivery_phone[1:]
-    elif not delivery_phone.startswith('+'):
-        delivery_phone = '+251' + delivery_phone
-
-    cart_items_session = session.get('cart', {})
-    if not cart_items_session:
-        if g.user:
-            user_db_cart_items = CartItem.query.filter_by(user_id=g.user.id).all()
-            if user_db_cart_items:
-                for db_item in user_db_cart_items:
-                    cart_items_session[str(db_item.product_id)] = {
-                        'id': str(db_item.product_id),
-                        'name': db_item.product.name,
-                        'price': float(db_item.product.price),
-                        'image_path': db_item.product.image_path or 'default.png',
-                        'quantity': db_item.quantity
-                    }
-                session['cart'] = cart_items_session
-                session.modified = True
-            else:
-                flash("Your cart is empty. Please add items before checking out.", 'warning')
-                return redirect(url_for('cart'))
-        else:
-            flash("Your cart is empty. Please add items before checking out.", 'warning')
-            return redirect(url_for('cart'))
-
-    total_amount = sum(item['price'] * item['quantity'] for item in cart_items_session.values())
-
-    session['delivery_info'] = {
-        'name': delivery_name,
-        'phone': delivery_phone,
-        'address': delivery_address,
-        'total_amount': total_amount,
-        'cart_items': list(cart_items_session.values())
-    }
-    session.modified = True
-
-    return redirect(url_for('payment'))
-
-@app.route('/payment')
-@login_required
+@app.route('/payment', methods=['GET', 'POST'])
 def payment():
     delivery_info = session.get('delivery_info')
     if not delivery_info:
-        flash("Please complete checkout details from the cart page.", 'warning')
-        session['next'] = url_for('payment')
-        return redirect(url_for('cart'))
-
-    total_amount = delivery_info.get('total_amount')
-    cart_items = delivery_info.get('cart_items')
-
-    return render_template('payment.html', total_amount=total_amount, cart_items=cart_items, datetime=datetime)
+        flash("Checkout session expired. Please order again.", 'warning')
+        return redirect(url_for('dashboard'))
+    total_amount = delivery_info.get('total_amount', 0)
+    cart_items = delivery_info.get('cart_items', [])
+    if request.method == 'POST':
+        payment_method = request.form.get('payment_method')
+        payment_details = {}
+        if payment_method in ['telebirr', 'cbebirr']:
+            payment_phone = request.form.get(f'{payment_method}_phone')
+            if not payment_phone or not payment_phone.replace('+', '').isdigit():
+                flash(f'Please provide a valid {payment_method.title()} phone number.', 'danger')
+                return redirect(url_for('payment'))
+            if payment_phone.startswith('09') and len(payment_phone) == 10:
+                payment_phone = '+251' + payment_phone[1:]
+            elif not payment_phone.startswith('+'):
+                payment_phone = '+251' + payment_phone
+            payment_details['phone'] = payment_phone
+        elif payment_method != 'cash_on_delivery':
+            flash('Please select a valid payment method.', 'danger')
+            return redirect(url_for('payment'))
+        session['payment_info'] = {
+            'method': payment_method,
+            'details': payment_details
+        }
+        session.modified = True
+        return redirect(url_for('finalize_order'))
+    return render_template('payment.html', total_amount=total_amount, cart_items=cart_items)
 
 @app.route('/finalize_order', methods=['POST'])
-@login_required
 def finalize_order():
-    user_id = session['user_id']
-    user = User.query.get(user_id)
-    if not user:
-        flash('User session invalid. Please log in again.', 'danger')
-        session['next'] = url_for('payment')
-        return redirect(url_for('account'))
-
+    user_id = session.get('user_id')  # Might be None (guest)
     delivery_info = session.get('delivery_info')
-    if not delivery_info or not delivery_info.get('address') or not delivery_info.get('phone') or not delivery_info.get('cart_items'):
-        flash("Checkout information incomplete. Please start from cart.", 'danger')
+    payment_info = session.get('payment_info')
+    cart = session.get('cart', {})
+
+    if not delivery_info or not payment_info or not cart:
+        flash("Checkout information incomplete. Please start from the cart.", 'danger')
+        session['delivery_info'] = delivery_info or {}
+        session.modified = True
         return redirect(url_for('cart'))
-
-    user_db_cart_items = CartItem.query.filter_by(user_id=user_id).all()
-    if not user_db_cart_items:
-        flash("Your cart is empty. Please add items before checking out.", 'warning')
-        return redirect(url_for('cart'))
-
-    server_validated_total = 0.0
-    order_items_to_add = []
-    
-    for db_item in user_db_cart_items:
-        product = Product.query.get(db_item.product_id)
-        if not product:
-            flash(f"One of the products in your cart ({db_item.product.name if db_item.product else 'Unknown'}) is no longer available. Please review your cart.", 'danger')
-            return redirect(url_for('cart'))
-
-        item_total = product.price * db_item.quantity
-        server_validated_total += item_total
-        order_items_to_add.append({
-            'product_id': product.id,
-            'quantity': db_item.quantity,
-            'price': product.price
-        })
-
-    payment_method = request.form.get('payment_method')
-    payment_detail_info = {}
-    status = 'placed'
-
-    if payment_method == 'telebirr':
-        payment_detail_info['phone'] = request.form.get('telebirr_phone')
-        if not payment_detail_info['phone'] or not payment_detail_info['phone'].replace('+', '').isdigit():
-            flash('Please provide a valid Telebirr phone number.', 'danger')
-            return redirect(url_for('payment'))
-        if payment_detail_info['phone'].startswith('09') and len(payment_detail_info['phone']) == 10:
-            payment_detail_info['phone'] = '+251' + payment_detail_info['phone'][1:]
-        elif not payment_detail_info['phone'].startswith('+'):
-            payment_detail_info['phone'] = '+251' + payment_detail_info['phone']
-        status = 'pending_payment_telebirr'
-    elif payment_method == 'cbebirr':
-        payment_detail_info['phone'] = request.form.get('cbebirr_phone')
-        if not payment_detail_info['phone'] or not payment_detail_info['phone'].replace('+', '').isdigit():
-            flash('Please provide a valid CBE Birr phone number.', 'danger')
-            return redirect(url_for('payment'))
-        if payment_detail_info['phone'].startswith('09') and len(payment_detail_info['phone']) == 10:
-            payment_detail_info['phone'] = '+251' + payment_detail_info['phone'][1:]
-        elif not payment_detail_info['phone'].startswith('+'):
-            payment_detail_info['phone'] = '+251' + payment_detail_info['phone']
-        status = 'pending_payment_cbebirr'
-    elif payment_method != 'cash_on_delivery':
-        flash('Please select a valid payment method.', 'danger')
-        return redirect(url_for('payment'))
 
     try:
+        total_amount = sum(float(item['price']) * item['quantity'] for item in cart.values())
+
         new_order = Order(
-            user_id=g.user.id,
-            total_amount=server_validated_total,
+            user_id=user_id,  # ✅ None if guest
+            total_amount=total_amount,
             delivery_address=delivery_info['address'],
             delivery_phone=delivery_info['phone'],
-            payment_method=payment_method,
-            payment_details=json.dumps(payment_detail_info),
-            status=status
+            payment_method=payment_info['method'],
+            payment_details=json.dumps(payment_info['details']),
+            status='placed' if payment_info['method'] == 'cash_on_delivery' else f'pending_payment_{payment_info["method"]}'
         )
         db.session.add(new_order)
         db.session.flush()
 
-        for item_data in order_items_to_add:
+        for pid, item in cart.items():
+            product = Product.query.get(int(pid))
+            if not product:
+                flash(f"Product {item['name']} is no longer available.", 'danger')
+                session['delivery_info'] = delivery_info
+                session.modified = True
+                return redirect(url_for('cart'))
+
             order_item = OrderItem(
                 order_id=new_order.id,
-                product_id=item_data['product_id'],
-                quantity=item_data['quantity'],
-                price_at_purchase=item_data['price']
+                product_id=product.id,
+                quantity=item['quantity'],
+                price_at_purchase=item['price']
             )
             db.session.add(order_item)
-            
-        CartItem.query.filter_by(user_id=user_id).delete()
-        
+
+        # Only clear database cart if logged in
+        if user_id:
+            CartItem.query.filter_by(user_id=user_id).delete()
+
+        # Cleanup session
         session.pop('cart', None)
         session.pop('delivery_info', None)
+        session.pop('payment_info', None)
         session.modified = True
 
         db.session.commit()
-        flash("Your order has been placed successfully! Check your dashboard for details.", 'success')
+        flash("Order placed successfully! Check your dashboard for details.", 'success')
         return redirect(url_for('dashboard'))
 
     except Exception as e:
         db.session.rollback()
         print(f"Error finalizing order: {e}")
         flash("An error occurred while placing your order. Please try again.", 'danger')
+        session['delivery_info'] = delivery_info
+        session.modified = True
         return redirect(url_for('cart'))
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     orders = Order.query.filter_by(user_id=g.user.id).order_by(Order.order_date.desc()).all()
-    return render_template('dashboard.html', orders=orders, datetime=datetime)
+    return render_template('dashboard.html', orders=orders)
 
-@app.route('/admin')
+@app.route('/admin', methods=['GET', 'POST'])
 @admin_required
 def admin():
+    if request.method == 'POST':
+        order_id = request.form.get('order_id')
+        new_status = request.form.get('status')
+        valid_statuses = ['placed', 'pending_payment_telebirr', 'pending_payment_cbebirr', 'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled']
+        if not order_id or not new_status or new_status not in valid_statuses:
+            flash('Invalid order ID or status.', 'danger')
+            return redirect(url_for('admin'))
+        order = Order.query.get(order_id)
+        if order:
+            order.status = new_status
+            try:
+                db.session.commit()
+                flash(f'Order {order_id} status updated to {new_status.replace("_", " ").capitalize()}.', 'success')
+            except Exception as e:
+                db.session.rollback()
+                print(f"Error updating order status: {e}")
+                flash('Error updating order status.', 'danger')
+        else:
+            flash('Order not found.', 'danger')
     orders = Order.query.order_by(Order.order_date.desc()).all()
-    orders_for_template = []
-    for order in orders:
-        items_detail = []
-        for item in order.order_items:
-            items_detail.append(f"{item.product.name} (x{item.quantity})")
-        
-        current_status_index = -1
-        tracker_statuses_admin = ['placed', 'confirmed', 'packed', 'out_for_delivery', 'delivered']
-        if order.status.startswith('pending_payment'):
-            current_status_index = 0
-        elif order.status in tracker_statuses_admin:
-            current_status_index = tracker_statuses_admin.index(order.status)
-
-        orders_for_template.append({
+    orders_for_template = [
+        {
             'id': order.id,
-            'customer': order.customer_name,
-            'customer_phone': order.customer_phone,
-            'customer_email': order.customer_email,
+            'customer': order.customer.name,
+            'customer_phone': order.customer.phone,
             'delivery_address': order.delivery_address,
-            'items': ', '.join(items_detail),
+            'items': order.items,
             'date': order.date,
             'total': order.total_amount,
             'payment_method': order.payment_method,
             'payment_details': order.payment_details,
             'status': order.status,
-            'current_status_index': current_status_index,
-            'tracker_statuses': tracker_statuses_admin
-        })
-    return render_template('admin.html', orders=orders_for_template, datetime=datetime)
-
-@app.route('/update_order_status', methods=['POST'])
-@admin_required
-def update_order_status():
-    order_id = request.form.get('order_id')
-    new_status = request.form.get('status')
-
-    valid_statuses = [
-        'placed', 'pending_payment_telebirr', 'pending_payment_cbebirr',
-        'confirmed', 'packed', 'out_for_delivery', 'delivered', 'cancelled'
+            'current_status_index': order.current_status_index,
+            'tracker_statuses': order.tracker_statuses
+        }
+        for order in orders
     ]
+    return render_template('admin.html', orders=orders_for_template)
 
-    if not order_id or not new_status:
-        flash('Missing order ID or status. Please try again.', 'danger')
-        return redirect(url_for('admin'))
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('account'))
 
-    if new_status not in valid_statuses:
-        flash(f'Invalid status: {new_status}', 'danger')
-        return redirect(url_for('admin'))
+@app.route('/about_us')
+def about_us():
+     return render_template('about_us.html', datetime=datetime)
 
-    order = Order.query.get(order_id)
-    if order:
-        order.status = new_status
-        try:
-            db.session.commit()
-            flash(f'Order {order_id} status updated to {new_status.replace("_", " ").capitalize()}', 'success')
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error updating order status: {e}', 'danger')
-            app.logger.error(f"Order status update error: {e}")
-    else:
-        flash('Order not found', 'danger')
+@app.route('/privacy_policy')
+def privacy_policy():
+    return render_template('privacy_policy.html')
 
-    return redirect(url_for('admin'))
+@app.route('/terms_of_service')
+def terms_of_service():
+    return render_template('terms_of_service.html')
 
 @app.route('/search_products', methods=['GET'])
 def search_products():
     query = request.args.get('query', '').strip()
     if not query:
         return jsonify(products=[]), 200
-
     search_pattern = f"%{query}%"
     products = Product.query.filter(
         (Product.name.ilike(search_pattern)) |
         (Product.description.ilike(search_pattern))
     ).all()
-
-    search_results = []
-    for product in products:
-        search_results.append({
+    search_results = [
+        {
             'id': product.id,
             'name': product.name,
             'price': product.price,
             'image_path': url_for('static', filename='images/' + product.image_path),
             'description': product.description,
             'category': product.category
-        })
-    
+        }
+        for product in products
+    ]
     return jsonify(products=search_results), 200
 
-@app.route('/about_us')
-def about_us():
-    return render_template('about_us.html', datetime=datetime)
-
-# --- Data Population ---
+# Data Population
 products_data = [
     {"name": "Fresh Cow Milk (1L)", "category": "milk", "price": 80.00, "image_suffix": "1", "description": "Pure, pasteurized cow milk, delivered fresh daily."},
     {"name": "Organic Whole Milk (1L)", "category": "milk", "price": 95.00, "image_suffix": "2", "description": "Sourced from organic farms, rich in nutrients and flavor."},
@@ -918,13 +752,9 @@ def init_db_command():
     with app.app_context():
         db.create_all()
         print("Database initialized.")
-        
-        print("Deleting all existing products...")
         Product.query.delete()
         db.session.commit()
         print("Existing products deleted.")
-
-        print("Populating products with new data...")
         for p_data in products_data:
             image_name = f"product{p_data['image_suffix']}.png"
             new_product = Product(
@@ -937,21 +767,17 @@ def init_db_command():
             db.session.add(new_product)
         db.session.commit()
         print(f"Total {len(products_data)} products added.")
-
         if not User.query.filter_by(is_admin=True).first():
             print("Admin user missing. Creating...")
             admin_user = User(
                 name="Admin",
-                lastname="User",
                 phone="+251911223344",
-                email="admin@example.com",
-                password=generate_password_hash("adminpass"),
                 is_admin=True,
                 address="Admin Office, Addis Ababa"
             )
             db.session.add(admin_user)
             db.session.commit()
-            print("Default admin user created (phone: +251911223344, pass: adminpass).")
+            print("Default admin user created (phone: +251911223344).")
         else:
             print("Admin user already exists. Skipping creation.")
 

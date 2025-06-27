@@ -3,20 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Baba Milk Delivery - Fresh milk and dairy products delivered to your door.">
     <title>Baba Milk Delivery - {% block title %}{% endblock %}</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" integrity="sha512-Kc323vGBEqzTmouAECnVceyQqyqdsSiqLQISBL29aUW4U/M7pSPA/gEUZQqv1cwx4OnYxTxve5UMg5GT6L4JJg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
 
     {% block head_extra %}{% endblock %}
 </head>
 <body>
-    <header class="sticky-header">
-        <div class="navbar">
+    <header class="sticky-header" role="banner">
+        <div class="navbar" role="navigation" aria-label="Main navigation">
             <div class="logo">
-                <a href="{{ url_for('home') }}">
-                    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Baba Milk Logo">
+                <a href="{{ url_for('home') }}" aria-label="Baba Milk Home">
+                    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Baba Milk Logo" width="100">
                 </a>
             </div>
             <nav>
@@ -24,26 +25,25 @@
                     <li><a href="{{ url_for('home') }}">Home</a></li>
                     <li><a href="{{ url_for('dashboard') }}">My Orders</a></li>
                     {% if session.get('is_admin') %}
-                    <li><a href="{{ url_for('admin') }}">Admin Panel</a></li>
+                        <li><a href="{{ url_for('admin') }}">Admin Panel</a></li>
                     {% endif %}
-                    <li><a href="{{ url_for('about_us') }}">About Us</a></li> {# New About Us link #}
+                    <li><a href="{{ url_for('about_us') }}">About Us</a></li>
                     <li>
-                        <a href="{{ url_for('cart') }}" class="cart-icon">
+                        <a href="{{ url_for('cart') }}" class="cart-icon" aria-label="View Cart">
                             <i class="fas fa-shopping-cart"></i>
-                            <span class="cart-count" id="cart-count">0</span>
+                            <span class="cart-count" id="cart-count" aria-live="polite">0</span>
                         </a>
                     </li>
                     <li>
                         {% if session.get('user_id') %}
-                        <a href="{{ url_for('logout') }}">Logout ({{ session.get('user_name', 'User') }})</a>
+                            <a href="{{ url_for('logout') }}" aria-label="Logout {{ session.get('user_name', 'User') }}">Logout ({{ session.get('user_name', 'User') }})</a>
                         {% else %}
-                        <a href="{{ url_for('account') }}">Account</a> {# Changed from Login / Signup to Account #}
+                            <a href="{{ url_for('account') }}">Account</a>
                         {% endif %}
                     </li>
                 </ul>
             </nav>
-            <!-- Hamburger Menu Toggle Button -->
-            <button class="menu-toggle" aria-label="Toggle navigation">
+            <button class="menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
                 <span class="bar"></span>
                 <span class="bar"></span>
                 <span class="bar"></span>
@@ -51,26 +51,59 @@
         </div>
     </header>
 
-    {# Flash Messages Container (Client-side JS will populate this) #}
-    <div class="flash-messages-container" id="flash-message-container">
-        {# This script tag passes Flask's flashed messages to JavaScript #}
-        <script id="flash-messages-data" type="application/json">
-            {{ get_flashed_messages(with_categories=true) | tojson | safe }}
-        </script>
+    <div class="flash-messages-container" id="flash-message-container" role="alert">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}" data-category="{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
     </div>
 
-    <main>
+    <main role="main">
         {% block content %}{% endblock %}
     </main>
 
-    <footer>
+    <footer role="contentinfo">
         <div class="container">
-            <p>&copy; {{ datetime.now().year }} Baba Milk App. All rights reserved.</p> {# datetime=datetime passed in routes #}
-            <p>Contact us: info@babamilk.com | +251 964 66 0512</p>
+            <p>© {{ current_year }} Baba Milk App. All rights reserved.</p>
+            <p>Contact us: <a href="mailto:info@babamilk.com">info@babamilk.com</a> | <a href="tel:+251964660512">+251 964 66 0512</a></p>
+            <div class="social-links">
+                <a href="https://facebook.com/babamilk" target="_blank" aria-label="Follow us on Facebook"><i class="fab fa-facebook-f"></i></a>
+                <a href="https://twitter.com/babamilk" target="_blank" aria-label="Follow us on Twitter"><i class="fab fa-x-twitter"></i></a>
+                <a href="https://instagram.com/babamilk" target="_blank" aria-label="Follow us on Instagram"><i class="fab fa-instagram"></i></a>
+            </div>
+            <nav class="footer-nav">
+                <a href="{{ url_for('about_us') }}">About Us</a> |
+                <a href="{{ url_for('privacy_policy') }}">Privacy Policy</a> |
+                <a href="{{ url_for('terms_of_service') }}">Terms of Service</a>
+            </nav>
         </div>
     </footer>
 
     <script src="{{ url_for('static', filename='Js/script.js') }}"></script>
+    <script>
+        // Toggle mobile menu
+        const menuToggle = document.querySelector('.menu-toggle');
+        const navLinks = document.querySelector('.nav-links');
+        menuToggle.addEventListener('click', () => {
+            const isExpanded = menuToggle.getAttribute('aria-expanded') === 'true';
+            menuToggle.setAttribute('aria-expanded', !isExpanded);
+            navLinks.classList.toggle('active');
+        });
+
+        // Update cart count
+        function updateCartCount() {
+            fetch('{{ url_for("get_cart_count") }}')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('cart-count').textContent = data.count;
+                })
+                .catch(error => console.error('Error updating cart count:', error));
+        }
+        document.addEventListener('DOMContentLoaded', updateCartCount);
+    </script>
     {% block body_extra %}{% endblock %}
 </body>
 </html>

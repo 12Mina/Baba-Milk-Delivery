@@ -4,7 +4,8 @@
 
 {% block content %}
 <div class="auth-container">
-    <div class="modal-content"> {# Re-using modal-content style for a centered box #}
+    <div class="auth-container">
+    <div class="box" style="padding: 30px; border: 1px solid #ccc; border-radius: 10px;">
         <h2>Verify Your Phone Number</h2>
         <form method="POST" action="{{ url_for('verify_otp') }}">
             <p class="help-text">An OTP has been sent to <strong>{{ phone }}</strong>.</p>
